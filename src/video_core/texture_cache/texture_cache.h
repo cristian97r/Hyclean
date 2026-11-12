@@ -6,6 +6,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstring>
 #include <numeric>
 #include <cstdlib>
 #include <limits>
@@ -39,6 +40,7 @@
 #include "video_core/texture_cache/host_mip_limits.h"
 #include "video_core/texture_cache/image_view_base.h"
 #include "video_core/texture_cache/samples_helper.h"
+#include "video_core/texture_cache/stale_targets.h"
 #include "video_core/texture_cache/texture_cache_base.h"
 #include "video_core/texture_cache/util.h"
 #include "video_core/textures/decoders.h"
@@ -273,6 +275,7 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
             }
             auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
             const auto copies = FullDownloadCopies(image.info);
+            MarkStaleTransfer(image);
             image.DownloadMemory(map, copies);
             staged_download_bytes += image.unswizzled_size_bytes;
             staged_downloads.push_back(GcDownload{image_id, map, std::move(copies)});
@@ -367,6 +370,158 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         Configure(true);
         Collect();
         FlushStagedDownloads();
+    }
+}
+
+template <class P>
+void TextureCache<P>::CollectStaleReferences() {
+    stale_references.clear();
+    const auto collect_downloads = [&](const auto& downloads) {
+        for (const auto& download : downloads) {
+            if (download.is_swizzle && !download.retired_image) {
+                stale_references.insert(download.object_id);
+            }
+        }
+    };
+    collect_downloads(uncommitted_downloads);
+    for (const auto& batch : committed_downloads) {
+        collect_downloads(batch);
+    }
+    for (const auto& decode : async_decodes) {
+        stale_references.insert(decode->image_id);
+    }
+    for (const auto& entry : unswizzle_queue) {
+        stale_references.insert(entry.image_id);
+    }
+    const auto bound_view = [&](ImageViewId view_id) {
+        if (PreparesImage(slot_image_views, view_id)) {
+            stale_references.insert(slot_image_views[view_id].image_id);
+        }
+    };
+    for (const ImageViewId view_id : render_targets.color_buffer_ids) {
+        bound_view(view_id);
+    }
+    bound_view(render_targets.depth_buffer_id);
+}
+
+template <class P>
+bool TextureCache<P>::StaleTargetReferenced(ImageId image_id) const {
+    const Image& image = slot_images[image_id];
+    if (True(image.flags & ImageFlagBits::PendingTransfer)) {
+        if constexpr (requires { runtime.IsFree(image.transfer_tick); }) {
+            if (!runtime.IsFree(image.transfer_tick)) {
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+    return stale_references.contains(image_id);
+}
+
+template <class P>
+void TextureCache<P>::MarkStaleTransfer(ImageBase& image) {
+    image.flags |= ImageFlagBits::PendingTransfer;
+    if constexpr (requires { runtime.CurrentTick(); }) {
+        image.transfer_tick = runtime.CurrentTick();
+    }
+}
+
+template <class P>
+void TextureCache<P>::RetireStaleTargets() {
+    if (!Tegra::g_nx2_ampere.load(std::memory_order_relaxed) || frame_tick <= STALE_TARGET_AGE) {
+        return;
+    }
+    // Bad-overlap targets can fill the cache before collection starts. Retire them at the
+    // collector's critical age, independently of memory pressure and costly textures.
+    constexpr size_t MaxPerFrame = 512;
+    const u64 cutoff = frame_tick - STALE_TARGET_AGE;
+    boost::container::small_vector<ImageId, 64> aged;
+    lru_cache.ForEachItemBelow(cutoff, [&](ImageId image_id) {
+        const Image& image = slot_images[image_id];
+        if (True(image.flags & ImageFlagBits::BadOverlap) && GpuWrittenRenderTarget(image) &&
+            StaleMarkerCovers(image)) {
+            aged.push_back(image_id);
+        }
+        return aged.size() >= MaxPerFrame;
+    });
+    if (aged.empty()) {
+        return;
+    }
+    CollectStaleReferences();
+    const auto unused = [&](ImageId image_id) {
+        const Image& image = slot_images[image_id];
+        return image.lru_index != SIZE_MAX && lru_cache.GetTick(image.lru_index) <= cutoff;
+    };
+    const auto kept = [&](ImageId image_id, const Image& image) {
+        if (True(image.flags & ImageFlagBits::IsDecoding) || StaleTargetReferenced(image_id)) {
+            return true;
+        }
+        // Old alias pairs must age out together; only recent partners protect an image.
+        for (const AliasedImage& alias : image.aliased_images) {
+            if (!unused(alias.id)) {
+                return true;
+            }
+        }
+        constexpr auto options = RelaxedOptions::Size | RelaxedOptions::Format;
+        for (const ImageId other_id : image.overlapping_images) {
+            if (unused(other_id)) {
+                continue;
+            }
+            const Image& other = slot_images[other_id];
+            if (IsSubresource(image.info, other, image.gpu_addr, options, false, true) ||
+                IsSubresource(other.info, image, other.gpu_addr, options, false, true)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto retire = [&](ImageId image_id) {
+        Image& image = slot_images[image_id];
+        MarkStale(image); // Keep page tracking before removing the image's own tracking.
+        if (!stale_pages.IsAll(image.cpu_addr, image.guest_size_bytes)) {
+            return false;
+        }
+        if (True(image.flags & ImageFlagBits::Tracked)) {
+            UntrackImage(image, image_id);
+        }
+        UnregisterImage(image_id);
+        trace_delete_reason = "retire-stale";
+        DeleteImage(image_id);
+        return true;
+    };
+    boost::container::small_vector<ImageId, 8> partners;
+    size_t remaining = MaxPerFrame;
+    for (const ImageId image_id : aged) {
+        if (remaining == 0) {
+            break;
+        }
+        const Image& image = slot_images[image_id];
+        if (False(image.flags & ImageFlagBits::BadOverlap) || kept(image_id, image)) {
+            continue;
+        }
+        // A sampled twin with no other aliases goes with its target when both are unused.
+        partners.clear();
+        for (const AliasedImage& alias : image.aliased_images) {
+            const Image& partner = slot_images[alias.id];
+            if (True(partner.flags & ImageFlagBits::BadOverlap) &&
+                False(partner.flags & ImageFlagBits::CpuModified) &&
+                !GpuWrittenRenderTarget(partner) && StaleMarkerCovers(partner) &&
+                partner.aliased_images.size() == 1 && !kept(alias.id, partner)) {
+                partners.push_back(alias.id);
+            }
+        }
+        if (partners.size() + 1 > remaining) {
+            continue;
+        }
+        if (retire(image_id)) {
+            --remaining;
+            for (const ImageId partner_id : partners) {
+                if (retire(partner_id)) {
+                    --remaining;
+                }
+            }
+        }
     }
 }
 
@@ -851,6 +1006,7 @@ void TextureCache<P>::TickFrame() {
         out_of_memory = failed != seen_failed_images;
         seen_failed_images = failed;
     }
+    RetireStaleTargets();
     // A forced collect for memory spilled to host memory collects as at the critical threshold
     // for this frame, without the re-upload of images left out that a failed image gets.
     if (out_of_memory || spill_collect || total_used_memory > minimum_memory) {
@@ -1591,6 +1747,7 @@ void TextureCache<P>::DownloadMemory(DAddr cpu_addr, size_t size) {
         }
         auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
         auto copies = FullDownloadCopies(image.info);
+        MarkStaleTransfer(image);
         image.DownloadMemory(map, copies);
         pending_bytes += image.unswizzled_size_bytes;
         pending.push_back(Pending{image_id, map, std::move(copies)});
@@ -1730,6 +1887,8 @@ bool TextureCache<P>::CopyVolumeSlice(const Tegra::Engines::Fermi2D::Surface& ds
     runtime.FlushDeferredClear();
     PrepareImage(src_slice->id, false, false);
     PrepareImage(dst_slice->id, true, false);
+    MarkStaleTransfer(slot_images[src_slice->id]);
+    MarkStaleTransfer(slot_images[dst_slice->id]);
     const ImageCopy slice_copy{
         .src_subresource = {.base_level = 0, .base_layer = 0, .num_layers = 1},
         .dst_subresource = {.base_level = 0, .base_layer = 0, .num_layers = 1},
@@ -1773,6 +1932,8 @@ bool TextureCache<P>::BlitImage(const Tegra::Engines::Fermi2D::Surface& dst,
 
     Image& dst_image = slot_images[dst_id];
     Image& src_image = slot_images[src_id];
+    MarkStaleTransfer(src_image);
+    MarkStaleTransfer(dst_image);
     if (True(dst_image.flags & ImageFlagBits::Unbacked)) {
         static u32 logged{};
         if (logged++ < 64) {
@@ -2182,6 +2343,7 @@ void TextureCache<P>::CommitAsyncFlushes() {
                 if (download_info.is_swizzle) {
                     Image& image = download_info.GetImage(slot_images);
                     const auto copies = FullDownloadCopies(image.info);
+                    MarkStaleTransfer(image);
                     image.DownloadMemory(download_map, copies);
                     download_map.offset += Common::AlignUp(image.unswizzled_size_bytes, 64);
                 }
@@ -2256,6 +2418,7 @@ void TextureCache<P>::PopAsyncFlushes() {
             }
             Image& image = download_info.GetImage(slot_images);
             const auto copies = FullDownloadCopies(image.info);
+            MarkStaleTransfer(image);
             image.DownloadMemory(download_map, copies);
             download_map.offset += image.unswizzled_size_bytes;
         }
@@ -2339,6 +2502,7 @@ std::pair<typename TextureCache<P>::Image*, BufferImageCopy> TextureCache<P>::Dm
     const Tegra::DMA::ImageOperand& image_operand, ImageId image_id, bool modifies_image) {
     const auto [level, base] = PrepareDmaImage(image_id, image_operand.address, modifies_image);
     auto* image = &slot_images[image_id];
+    MarkStaleTransfer(*image);
     const u32 buffer_size = static_cast<u32>(buffer_operand.pitch * buffer_operand.height);
     const u32 bpp = VideoCore::Surface::BytesPerBlock(image->info.format);
     const auto convert = [old_bpp = image_operand.bytes_per_pixel, bpp](u32 value) {
@@ -2382,6 +2546,7 @@ void TextureCache<P>::DownloadImageIntoBuffer(typename TextureCache<P>::Image* i
                                               size_t buffer_offset,
                                               std::span<const VideoCommon::BufferImageCopy> copies,
                                               GPUVAddr address, size_t size) {
+    MarkStaleTransfer(*image);
     if constexpr (IMPLEMENTS_ASYNC_DOWNLOADS) {
         const BufferDownload new_buffer_download{address, size};
         auto slot = slot_buffer_downloads.insert(new_buffer_download);
@@ -2432,14 +2597,38 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
                             image.info.size.width, image.info.size.height, image.info.size.depth,
                             image.guest_size_bytes / 1024, frame_tick);
             }
+            // A new allocation has undefined pixels; obsolete guest bytes cannot initialize it.
+            if (False(image.flags & ImageFlagBits::ContentsDefined)) {
+                bool cleared = false;
+                if constexpr (requires { runtime.ClearImage(image); }) {
+                    cleared = runtime.ClearImage(image);
+                }
+                if (!cleared && (image.info.num_samples == 1 || runtime.CanUploadMSAA())) {
+                    auto copies = FullDownloadCopies(image.info);
+                    if (True(image.flags & ImageFlagBits::Converted)) {
+                        ConvertedLayout(image.info, copies);
+                    }
+                    size_t zero_size = 0;
+                    for (const auto& copy : copies) {
+                        zero_size = (std::max)(zero_size, copy.buffer_offset + copy.buffer_size);
+                    }
+                    auto staging = runtime.UploadStagingBuffer(zero_size);
+                    std::memset(staging.mapped_span.data(), 0, staging.mapped_span.size_bytes());
+                    image.UploadMemory(staging, copies);
+                    runtime.InsertUploadMemoryBarrier();
+                }
+                image.flags |= ImageFlagBits::ContentsDefined;
+            }
             ++tc_stale_skips;
             tc_stale_skip_bytes += image.guest_size_bytes;
             runtime.TransitionImageLayout(image);
+            MarkStaleTransfer(image);
             return;
         }
         ++tc_stale_gpu_written;
     }
 
+    image.flags |= ImageFlagBits::ContentsDefined;
     if (True(image.flags & ImageFlagBits::SparseLayers)) {
         RefreshSparseLayers(image);
         return;
@@ -2917,11 +3106,11 @@ ImageViewId TextureCache<P>::CreateImageView(const TICEntry& raw_config) {
 
 template <class P>
 ImageId TextureCache<P>::FindOrInsertImage(const ImageInfo& info, GPUVAddr gpu_addr,
-                                           RelaxedOptions options) {
+                                           RelaxedOptions options, bool render_target) {
     if (const ImageId image_id = FindImage(info, gpu_addr, options); image_id) {
         return image_id;
     }
-    return InsertImage(info, gpu_addr, options);
+    return InsertImage(info, gpu_addr, options, render_target);
 }
 
 template <class P>
@@ -3330,7 +3519,7 @@ std::optional<DAddr> TextureCache<P>::ImageCpuAddress(GPUVAddr gpu_addr, size_t 
 
 template <class P>
 ImageId TextureCache<P>::InsertImage(const ImageInfo& info, GPUVAddr gpu_addr,
-                                     RelaxedOptions options) {
+                                     RelaxedOptions options, bool render_target) {
     const StutterTrace::SiteScope site{StutterTrace::Site::ImageCreate};
     std::optional<DAddr> cpu_addr = ImageCpuAddress(gpu_addr, CalculateGuestSizeInBytes(info));
     if (!cpu_addr) {
@@ -3349,7 +3538,7 @@ ImageId TextureCache<P>::InsertImage(const ImageInfo& info, GPUVAddr gpu_addr,
     }
     const bool tc_trace = TextureCacheTrace();
     const auto tc_t0 = tc_trace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const ImageId image_id = JoinImages(storage_info, gpu_addr, *cpu_addr);
+    const ImageId image_id = JoinImages(storage_info, gpu_addr, *cpu_addr, render_target);
     if (!image_id) {
         return image_id;
     }
@@ -3374,7 +3563,8 @@ ImageId TextureCache<P>::InsertImage(const ImageInfo& info, GPUVAddr gpu_addr,
 }
 
 template <class P>
-ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DAddr cpu_addr) {
+ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DAddr cpu_addr,
+                                    bool render_target) {
     VideoCommon::Nx2Profile::Scope profile_scope{VideoCommon::Nx2Profile::Zone::TextureCache};
     ImageInfo new_info = info;
     const size_t size_bytes = CalculateGuestSizeInBytes(new_info);
@@ -3504,6 +3694,9 @@ ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DA
         }
     }
     Image& new_image = slot_images[new_image_id];
+    if (render_target) {
+        new_image.flags |= ImageFlagBits::RenderTargetOrigin;
+    }
 
     new_image.allocation_tick = frame_tick;
     {
@@ -3692,6 +3885,7 @@ ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DA
         runtime.TransitionImageLayout(new_image);
     } else if (copied_whole) {
         // What RefreshContents does, without the upload.
+        new_image.flags |= ImageFlagBits::ContentsDefined;
         new_image.flags &= ~ImageFlagBits::CpuModified;
         if (False(new_image.flags & ImageFlagBits::Tracked)) {
             TrackImage(new_image, new_image_id);
@@ -3721,6 +3915,8 @@ ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DA
             SetModificationTick(slot_images, new_image, overlap.modification_tick);
             continue;
         }
+        MarkStaleTransfer(overlap);
+        MarkStaleTransfer(new_image);
         if (True(overlap.flags & ImageFlagBits::GpuModified)) {
             new_image.flags |= ImageFlagBits::GpuModified;
             const auto& resolution = Settings::values.resolution_info;
@@ -3971,7 +4167,7 @@ ImageViewId TextureCache<P>::FindRenderTargetView(const ImageInfo& info, GPUVAdd
     bool delete_state = has_deleted_images;
     do {
         has_deleted_images = false;
-        image_id = FindOrInsertImage(info, gpu_addr);
+        image_id = FindOrInsertImage(info, gpu_addr, RelaxedOptions{}, true);
         delete_state |= has_deleted_images;
     } while (has_deleted_images);
     has_deleted_images = delete_state;
@@ -4732,6 +4928,8 @@ template <class P>
 void TextureCache<P>::CopyImage(ImageId dst_id, ImageId src_id, std::vector<ImageCopy> copies) {
     Image& dst = slot_images[dst_id];
     Image& src = slot_images[src_id];
+    MarkStaleTransfer(src);
+    MarkStaleTransfer(dst);
     if (True(dst.flags & ImageFlagBits::UnwrittenSparse) ||
         True(src.flags & ImageFlagBits::UnwrittenSparse)) {
         return;
