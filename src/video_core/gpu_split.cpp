@@ -848,6 +848,7 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
         const u32 count = static_cast<u32>(head >> 32);
         const u32 last_break = (head & HasBreak) != 0 ? static_cast<u32>((head >> 8) & 0xffff)
                                                       : Tegra::Engines::Maxwell3D::NoBreak;
+        Nx2Profile::Scope scope{Nx2Profile::Zone::Method};
         static_cast<Tegra::Engines::Maxwell3D*>(back_engine)
             ->WriteStateRegisters(*system, std::span<const u64, StateFlagWords>{entry + 1, StateFlagWords},
                                   std::span<const u64>{entry + 1 + StateFlagWords, count}, last_break);
@@ -858,6 +859,7 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
             Nx2FastDraw::Break(Nx2FastDraw::Reason::Call);
         }
         const size_t payload = static_cast<size_t>((head >> 8) & 0xffffff);
+        Nx2Profile::Scope scope{Nx2Profile::Zone::Method};
         reinterpret_cast<void (*)(const u64*)>(entry[1])(entry + 2);
         return 2 + payload;
     }
@@ -915,6 +917,7 @@ void GpuSplit::BackLoop(std::stop_token stop_token) {
                 // too, so the deferred submit can't overlap whatever the front does next.
                 if (!back_quiet.load(std::memory_order_relaxed)) {
                     if (idle_hook != nullptr) {
+                        Nx2Profile::Scope hook_scope{Nx2Profile::Zone::IdleHook};
                         idle_hook(idle_argument);
                     }
                     back_quiet.store(true, std::memory_order_release);
@@ -953,6 +956,7 @@ void GpuSplit::BackLoop(std::stop_token stop_token) {
             if (hook_requested.load(std::memory_order_relaxed) &&
                 idle_hook != nullptr) [[unlikely]] {
                 hook_requested.store(false, std::memory_order_seq_cst);
+                Nx2Profile::Scope scope{Nx2Profile::Zone::IdleHook};
                 idle_hook(idle_argument);
             }
             // Hand ring space back now and then while working through a long batch, and at once

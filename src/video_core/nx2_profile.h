@@ -78,6 +78,7 @@ enum class Zone : u32 {
     ComputeImages,        ///< A dispatch's texture handles, image views and texture buffers
     ComputeBuffers,       ///< A dispatch's buffer lookups, uploads, write marks and binds
     ComputeDownloads,     ///< Early read downloads recorded right behind a dispatch
+    IdleHook,             ///< Split GPU thread: the back's idle hook (deferred submit)
     Count,
 };
 
@@ -93,7 +94,7 @@ inline constexpr std::array<const char*, static_cast<size_t>(Zone::Count)> zone_
     "compute pipeline miss", "pipeline wait", "shader capture", "texture cache", "GPU wait",
     "present", "worker idle",
     "present wait", "queue submit", "compute storage", "compute images", "compute buffers",
-    "compute downloads",
+    "compute downloads", "idle hook",
 };
 
 static_assert(static_cast<size_t>(Zone::Count) <= StutterTrace::ZoneSlots);
