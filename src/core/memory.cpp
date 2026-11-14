@@ -878,13 +878,15 @@ struct Memory::Impl {
         auto& timing = system.CoreTiming();
         const u64 start = timing.GetClockTicks();
         const u64 reads = VideoCore::AsyncReadback::t_reads;
-        DownloadFromRasterizer(v_address, size);
+        const bool hit = DownloadFromRasterizer(v_address, size);
         Kernel::Nx2ThreadStats::CountMemory(Kernel::Nx2ThreadStats::t_run,
-                                            timing.GetClockTicks() - start,
+                                            timing.GetClockTicks() - start, false, hit,
                                             VideoCore::AsyncReadback::t_reads != reads);
+        Kernel::Nx2ThreadStats::CountPage(v_address >> LICHII_PAGEBITS, false);
     }
 
-    void DownloadFromRasterizer(VAddr v_address, size_t size) {
+    /// True when the core's read area covered the read: no OnCPURead.
+    bool DownloadFromRasterizer(VAddr v_address, size_t size) {
         const auto* p = GetPointerImpl(
             v_address, []() {}, []() {});
         if (!gpu_device_memory) [[unlikely]] {
@@ -892,7 +894,7 @@ struct Memory::Impl {
         }
         if (!gpu_device_memory->IsPhysicalPointer(p)) [[unlikely]] {
             ReportForeignPointer(v_address, p);
-            return;
+            return false;
         }
         const size_t core = system.GetCurrentHostThreadID();
         if (core >= Core::Hardware::NUM_CPU_CORES) {
@@ -906,7 +908,7 @@ struct Memory::Impl {
                 DisarmReadTraps(v_address, size);
                 (void)system.GPU().OnCPURead(address, size);
             });
-            return;
+            return false;
         }
         auto& current_area = rasterizer_read_areas[core];
         if (const u64 generation = read_trap_generation.load(std::memory_order_acquire);
@@ -914,15 +916,18 @@ struct Memory::Impl {
             current_area = {};
             read_area_generations[core] = generation;
         }
+        bool hit = true;
         gpu_device_memory->ApplyOpOnPointer(p, scratch_buffers[core], [&](DAddr address) {
             const DAddr end_address = address + size;
             if (current_area.start_address <= address && end_address <= current_area.end_address)
                 [[likely]] {
                 return;
             }
+            hit = false;
             DisarmReadTraps(v_address, size);
             current_area = system.GPU().OnCPURead(address, size);
         });
+        return hit;
     }
 
     void HandleRasterizerWrite(VAddr v_address, size_t size) {
@@ -932,12 +937,14 @@ struct Memory::Impl {
         }
         auto& timing = system.CoreTiming();
         const u64 start = timing.GetClockTicks();
-        WriteToRasterizer(v_address, size);
+        const bool hit = WriteToRasterizer(v_address, size);
         Kernel::Nx2ThreadStats::CountMemory(Kernel::Nx2ThreadStats::t_run,
-                                            timing.GetClockTicks() - start, false);
+                                            timing.GetClockTicks() - start, true, hit, false);
+        Kernel::Nx2ThreadStats::CountPage(v_address >> LICHII_PAGEBITS, true);
     }
 
-    void WriteToRasterizer(VAddr v_address, size_t size) {
+    /// True when the core's write area covered the write: no OnCPUWrite.
+    bool WriteToRasterizer(VAddr v_address, size_t size) {
         const auto* p = GetPointerImpl(
             v_address, []() {}, []() {});
         constexpr size_t sys_core = Core::Hardware::NUM_CPU_CORES - 1;
@@ -948,7 +955,7 @@ struct Memory::Impl {
         }
         if (!gpu_device_memory->IsPhysicalPointer(p)) [[unlikely]] {
             ReportForeignPointer(v_address, p);
-            return;
+            return false;
         }
         // Guard on sys_core;
         if (core == sys_core) [[unlikely]] {
@@ -959,6 +966,7 @@ struct Memory::Impl {
                 sys_core_guard.unlock();
             }
         };
+        bool hit = true;
         gpu_device_memory->ApplyOpOnPointer(p, scratch_buffers[core], [&](DAddr address) {
             auto& current_area = rasterizer_write_areas[core];
             PAddr subaddress = address >> LICHII_PAGEBITS;
@@ -967,6 +975,7 @@ struct Memory::Impl {
             // It is often the case the games like to access wildly different addresses. Hence why I propose
             // we should let the compiler just do it's thing...
             if (current_area.last_address != subaddress) {
+                hit = false;
                 // Short circuit the need to check for address/size
                 auto const do_collection = (address != 0 && size != 0)
                     && system.GPU().OnCPUWrite(address, size);
@@ -981,6 +990,7 @@ struct Memory::Impl {
             // before this one: its bytes would land over the ones stored after this returns.
             VideoCore::DownloadLanding::Await(address, size);
         });
+        return hit;
     }
 
     struct GPUDirtyState {
