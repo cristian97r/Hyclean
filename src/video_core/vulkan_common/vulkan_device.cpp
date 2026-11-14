@@ -9,7 +9,10 @@
 #include <bitset>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <deque>
+#include <mutex>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -470,11 +473,67 @@ VKAPI_ATTR VkResult VKAPI_CALL TimedAllocateMemory(VkDevice device,
     return g_vma_allocate_memory(device, allocate_info, allocator, memory);
 }
 
+// vkFreeMemory takes 5-14 ms per dedicated allocation on NVIDIA's Linux driver, and the texture
+// cache frees dozens of them per frame when an area streams in. VMA already forgot the memory, so
+// a worker frees it. Device destruction drains the queue before the logical device goes.
+class MemoryFreeWorker {
+public:
+    void Push(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* allocator) {
+        {
+            std::scoped_lock lock{mutex};
+            queue.push_back({device, memory, allocator});
+            if (!thread.joinable()) {
+                thread = std::jthread([this](std::stop_token token) { Run(token); });
+            }
+        }
+        work.notify_one();
+    }
+
+    void Drain() {
+        std::unique_lock lock{mutex};
+        idle.wait(lock, [this] { return queue.empty() && !busy; });
+    }
+
+private:
+    struct Entry {
+        VkDevice device;
+        VkDeviceMemory memory;
+        const VkAllocationCallbacks* allocator;
+    };
+
+    void Run(std::stop_token token) {
+        std::unique_lock lock{mutex};
+        while (work.wait(lock, token, [this] { return !queue.empty(); })) {
+            const Entry entry = queue.front();
+            queue.pop_front();
+            busy = true;
+            lock.unlock();
+            {
+                using namespace VideoCommon::StutterTrace;
+                const SiteScope site{Site::MemoryFree};
+                g_vma_free_memory(entry.device, entry.memory, entry.allocator);
+            }
+            lock.lock();
+            busy = false;
+            if (queue.empty()) {
+                idle.notify_all();
+            }
+        }
+    }
+
+    std::mutex mutex;
+    std::condition_variable_any work;
+    std::condition_variable_any idle;
+    std::deque<Entry> queue;
+    bool busy = false;
+    std::jthread thread;
+};
+
+MemoryFreeWorker g_memory_free_worker;
+
 VKAPI_ATTR void VKAPI_CALL TimedFreeMemory(VkDevice device, VkDeviceMemory memory,
                                            const VkAllocationCallbacks* allocator) {
-    using namespace VideoCommon::StutterTrace;
-    const SiteScope site{Site::MemoryFree};
-    g_vma_free_memory(device, memory, allocator);
+    g_memory_free_worker.Push(device, memory, allocator);
 }
 
 } // Anonymous namespace
@@ -1027,6 +1086,7 @@ Device::~Device() {
         }
     }
     vmaDestroyAllocator(allocator);
+    g_memory_free_worker.Drain();
 }
 
 VideoCommon::Fsr4PortDevice Device::Fsr4PortDevice() const {
