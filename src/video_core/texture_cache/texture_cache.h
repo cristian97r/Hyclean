@@ -714,6 +714,7 @@ void TextureCache<P>::TickFrame() {
         mem_trace && now - mem_trace_time >= std::chrono::seconds{2}) {
         mem_trace_time = now;
         u64 image_bytes{};
+        u64 allocated_bytes{};
         u64 gpu_written_bytes{};
         size_t images{};
         size_t unbacked{};
@@ -725,6 +726,7 @@ void TextureCache<P>::TickFrame() {
             }
             const u64 bytes = GetScaledImageSizeBytes(*image);
             image_bytes += bytes;
+            allocated_bytes += ImageAllocationBytes(*image) + (image->HasScaled() ? bytes : 0);
             if (True(image->flags & ImageFlagBits::GpuModified)) {
                 gpu_written_bytes += bytes;
             }
@@ -739,10 +741,11 @@ void TextureCache<P>::TickFrame() {
         const u64 sentenced = std::accumulate(sentenced_image_bytes.begin(),
                                               sentenced_image_bytes.end(), gpu_sentenced_bytes);
         LOG_INFO(HW_GPU,
-                 "Memory trace: texture cache {} images {} MiB ({} MiB GPU-written, {} unbacked), "
-                 "device usage {} MiB (expected {} MiB, critical {} MiB), sentenced {} MiB, {} "
-                 "async decodes {} MiB, scratch {} MiB",
-                 images, image_bytes >> 20, gpu_written_bytes >> 20, unbacked,
+                 "Memory trace: texture cache {} images {} MiB ({} MiB allocated, {} MiB "
+                 "GPU-written, {} unbacked), device usage {} MiB (expected {} MiB, critical {} "
+                 "MiB), sentenced {} MiB, {} async decodes {} MiB, scratch {} MiB",
+                 images, image_bytes >> 20, allocated_bytes >> 20, gpu_written_bytes >> 20,
+                 unbacked,
                  total_used_memory >> 20, expected_memory >> 20, critical_memory >> 20,
                  sentenced >> 20, async_decodes.size(), decode_bytes >> 20,
                  (swizzle_data_buffer.capacity() + unswizzle_data_buffer.capacity()) >> 20);
