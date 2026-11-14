@@ -237,6 +237,8 @@ public:
 
         INSERT_PADDING_WORDS(0x10);
     } launch_description{};
+    /// GPU address of the QMD being dispatched (native QMD read, else launch_desc_loc)
+    GPUVAddr dispatch_qmd{};
 
     struct {
         u32 write_offset = 0;

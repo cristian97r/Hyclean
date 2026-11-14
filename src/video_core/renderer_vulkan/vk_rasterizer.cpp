@@ -2451,6 +2451,24 @@ void RasterizerVulkan::DispatchCompute() {
         if (kepler_compute->IsNativeMode()) throw Shader::RuntimeError("Native compute pipeline unavailable");
         return;
     }
+    if (static const bool compute_trace = std::getenv("EDEN_NX2_COMPUTE_TRACE") != nullptr;
+        compute_trace) {
+        // The first 8 dispatches of each program address (per run, so the log stays small).
+        static std::unordered_map<GPUVAddr, u32> traced;
+        const GPUVAddr program = kepler_compute->regs.code_loc.Address();
+        if (u32& count = traced[program]; count < 8) {
+            ++count;
+            const auto& launch = kepler_compute->launch_description;
+            LOG_INFO(HW_GPU,
+                     "Compute trace frame {}: QMD {:#x} program {:#x} shader {:016x} grid {}x{}x{} "
+                     "block {}x{}x{}{}",
+                     render_trace_frame, kepler_compute->dispatch_qmd, program,
+                     pipeline->ShaderHash(), launch.grid_dim_x.Value(), launch.grid_dim_y.Value(),
+                     launch.grid_dim_z.Value(), launch.block_dim_x.Value(),
+                     launch.block_dim_y.Value(), launch.block_dim_z.Value(),
+                     kepler_compute->GetIndirectComputeAddress() ? " (indirect grid)" : "");
+        }
+    }
     if (effect_pace_skip && EffectPaceHashes().contains(pipeline->ShaderHash())) {
         return;
     }
