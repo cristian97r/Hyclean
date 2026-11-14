@@ -172,7 +172,7 @@ inline u64 Ticks() {
 struct ThreadData {
     std::array<u64, static_cast<size_t>(Zone::Count)> exclusive_ns{};
     std::array<u64, static_cast<size_t>(Zone::Count)> count{};
-    std::array<u64, 8> counters{}; ///< See Counter
+    std::array<u64, 11> counters{}; ///< See Counter
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_ns{};
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_count{};
     /// GPU waits by the zone they happened in (Other: outside every zone)
@@ -253,6 +253,9 @@ enum class Counter : u32 {
     SameValueWrites, ///< Of MethodWrites: the register already held the value
     AcquireChecks,  ///< Semaphore acquires evaluated
     AcquireWaits,   ///< Of AcquireChecks: not met yet (the channel waits)
+    CBBinds,        ///< 3D constant buffer binds (Maxwell3D::ProcessCBBind)
+    SameCBBinds,    ///< Of CBBinds: same enable, address and size as the slot held
+    DeltaStorageBinds, ///< Storage descriptors re-read on delta draws (ConfigureDelta)
 };
 
 /// Method calls on this thread by method (3D registers on the back, macros on the front), and
@@ -373,6 +376,10 @@ inline void Report(const char* thread_name = "GPU thread", bool report_all_conte
     line += fmt::format(" | acquires {:.0f} ({:.0f} waited)",
                         static_cast<double>(data.counters[6]) * 1e9 / window,
                         static_cast<double>(data.counters[7]) * 1e9 / window);
+    line += fmt::format(" | 3D CB binds {:.0f} ({:.0f} unchanged) | delta storage binds {:.0f}",
+                        static_cast<double>(data.counters[8]) * 1e9 / window,
+                        static_cast<double>(data.counters[9]) * 1e9 / window,
+                        static_cast<double>(data.counters[10]) * 1e9 / window);
     std::string drains;
     for (size_t i = 0; i < data.drain_count.size(); ++i) {
         if (data.drain_count[i] != 0) {
