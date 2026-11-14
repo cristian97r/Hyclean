@@ -454,7 +454,8 @@ bool FrameDump::NoteSampled(std::span<const Sampled> textures) {
     return recorded;
 }
 
-void FrameDump::NoteDispatchSampled(u64 shader_hash, std::span<const Sampled> textures) {
+void FrameDump::NoteDispatchSampled(u64 shader_hash, GPUVAddr program,
+                                    std::span<const Sampled> textures) {
     for (u32 index = 0; index < textures.size(); ++index) {
         const Sampled& texture = textures[index];
         const auto key = SampledKey(texture);
@@ -471,8 +472,8 @@ void FrameDump::NoteDispatchSampled(u64 shader_hash, std::span<const Sampled> te
             fmt::format("{:04}_dispatch{:04}_{:016x}_tex{:02}_tic{}", sequence++, dispatches,
                         shader_hash, index, texture.tic),
             fmt::format(
-                R"("kind":"sampled","dispatch":{},"after_draws":{},"stage":{},"tic":{},"index":{},"shaders":["{:016x}"])",
-                dispatches, draws, texture.stage, texture.tic, index, shader_hash));
+                R"("kind":"sampled","dispatch":{},"after_draws":{},"stage":{},"tic":{},"index":{},"shaders":["{:016x}"],"program":"{:#x}")",
+                dispatches, draws, texture.stage, texture.tic, index, shader_hash, program));
     }
 }
 
@@ -555,7 +556,8 @@ bool FrameDump::EndPass() {
     return recorded;
 }
 
-void FrameDump::CaptureDispatch(u64 shader_hash, std::span<ImageView* const> written) {
+void FrameDump::CaptureDispatch(u64 shader_hash, GPUVAddr program,
+                                std::span<ImageView* const> written) {
     const u32 dispatch = dispatches++;
     for (u32 slot = 0; slot < written.size(); ++slot) {
         const auto target = written[slot] ? MakeTarget(*written[slot], slot) : std::nullopt;
@@ -565,8 +567,8 @@ void FrameDump::CaptureDispatch(u64 shader_hash, std::span<ImageView* const> wri
         Record(*target,
                fmt::format("{:04}_dispatch{:04}_{:016x}_img{}", sequence++, dispatch, shader_hash,
                            slot),
-               fmt::format(R"("kind":"dispatch","dispatch":{},"after_draws":{},"slot":{},"shaders":["{:016x}"])",
-                           dispatch, draws, slot, shader_hash));
+               fmt::format(R"("kind":"dispatch","dispatch":{},"after_draws":{},"slot":{},"shaders":["{:016x}"],"program":"{:#x}")",
+                           dispatch, draws, slot, shader_hash, program));
     }
 }
 

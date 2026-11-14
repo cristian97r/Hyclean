@@ -159,7 +159,8 @@ public:
     /// copies were recorded, which ends the current render pass.
     bool NoteSampled(std::span<const Sampled> textures);
     /// Reads back the textures of the dispatch about to run not yet seen for this shader.
-    void NoteDispatchSampled(u64 shader_hash, std::span<const Sampled> textures);
+    /// `program` is its guest program base, as in EDEN_NX2_SHADER_DUMP file names.
+    void NoteDispatchSampled(u64 shader_hash, GPUVAddr program, std::span<const Sampled> textures);
     /// Records the buffers of the current draw (shader hashes by program) or of the dispatch about
     /// to run not yet seen for their shader. Returns true when copies were recorded.
     bool NoteBuffers(bool compute, std::span<const u64> shader_hashes,
@@ -175,7 +176,7 @@ public:
     void NoteDraw(std::span<const u64> shader_hashes);
     /// Captures the current pass; returns true when copies were recorded.
     bool EndPass();
-    void CaptureDispatch(u64 shader_hash, std::span<ImageView* const> written);
+    void CaptureDispatch(u64 shader_hash, GPUVAddr program, std::span<ImageView* const> written);
     void CapturePresent(ImageView& view);
     /// Waits for pending readbacks and writes them once they pass the staging budget.
     void DrainIfFull();
