@@ -1,0 +1,73 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+BUILD_TYPE=${BUILD_TYPE:-Release}
+ENABLE_WERROR=${ENABLE_WERROR:-OFF}
+ENABLE_OPENGL=${ENABLE_OPENGL:-ON}
+ENABLE_LIBUSB=${ENABLE_LIBUSB:-ON}
+ENABLE_CUBEB=${ENABLE_CUBEB:-ON}
+ENABLE_RESHADE=${ENABLE_RESHADE:-ON}
+ENABLE_LSFG=${ENABLE_LSFG:-ON}
+ENABLE_UPDATE_CHECKER=${ENABLE_UPDATE_CHECKER:-OFF}
+ENABLE_WEB_SERVICE=${ENABLE_WEB_SERVICE:-OFF}
+ENABLE_QT_TRANSLATION=${ENABLE_QT_TRANSLATION:-OFF}
+JOBS=${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}
+QT_ROOT=/opt/Qt-win/6.8.3/msvc2022_64
+QT_HOST_ROOT=/opt/Qt-host/6.8.3/gcc_64
+
+cmake -S /src -B /src/build-windows -G Ninja \
+    -DCMAKE_SYSTEM_NAME=Windows \
+    -DCMAKE_SYSTEM_VERSION=10.0 \
+    -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+    -DCMAKE_FIND_ROOT_PATH=/xwin \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_C_COMPILER=clang-cl \
+    -DCMAKE_CXX_COMPILER=clang-cl \
+    -DCMAKE_C_COMPILER_TARGET=x86_64-pc-windows-msvc \
+    -DCMAKE_CXX_COMPILER_TARGET=x86_64-pc-windows-msvc \
+    -DCMAKE_LINKER=lld-link \
+    -DCMAKE_AR=llvm-lib \
+    -DCMAKE_RC_COMPILER=llvm-rc \
+    -DCMAKE_MT=llvm-mt \
+    "-DCMAKE_C_FLAGS=/vctoolsdir /xwin/crt /winsdkdir /xwin/sdk /DWIN32 /D_WINDOWS /DNOMINMAX" \
+    "-DCMAKE_CXX_FLAGS=/vctoolsdir /xwin/crt /winsdkdir /xwin/sdk /DWIN32 /D_WINDOWS /EHsc /DNOMINMAX" \
+    "-DCMAKE_EXE_LINKER_FLAGS=/libpath:/xwin/crt/lib/x86_64 /libpath:/xwin/sdk/lib/um/x86_64 /libpath:/xwin/sdk/lib/ucrt/x86_64" \
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL \
+    -DBOOST_CONTEXT_IMPLEMENTATION=winfib \
+    -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+    -DENABLE_WERROR="${ENABLE_WERROR}" \
+    -DBUILD_TESTING=OFF \
+    -DLICHII_TESTS=OFF \
+    -DENABLE_QT=ON \
+    -DENABLE_QT_TRANSLATION="${ENABLE_QT_TRANSLATION}" \
+    -DLICHII_CMD=ON \
+    -DLICHII_ROOM=OFF \
+    -DLICHII_ROOM_STANDALONE=OFF \
+    -DLICHII_USE_BUNDLED_QT=OFF \
+    "-DCMAKE_PREFIX_PATH=${QT_ROOT}" \
+    "-DQt6_DIR=${QT_ROOT}/lib/cmake/Qt6" \
+    -DQT_TARGET_PATH="${QT_ROOT}" \
+    -DQT_HOST_PATH="${QT_HOST_ROOT}" \
+    -DQT_HOST_PATH_CMAKE_DIR="${QT_HOST_ROOT}/lib/cmake" \
+    -DLICHII_USE_BUNDLED_SDL3=ON \
+    -DLICHII_USE_BUNDLED_FFMPEG=ON \
+    -DLICHII_USE_BUNDLED_OPENSSL=ON \
+    -DLICHII_USE_BUNDLED_SIRIT=ON \
+    -DVulkanHeaders_FORCE_BUNDLED=ON \
+    -DVulkanUtilityLibraries_FORCE_BUNDLED=ON \
+    -DVulkan_INCLUDE_DIR=/src/.cache/cpm/vulkanheaders/v1.4.345/include \
+    -DENABLE_UPDATE_CHECKER="${ENABLE_UPDATE_CHECKER}" \
+    -DENABLE_WEB_SERVICE="${ENABLE_WEB_SERVICE}" \
+    -DENABLE_OPENGL="${ENABLE_OPENGL}" \
+    -DENABLE_LIBUSB="${ENABLE_LIBUSB}" \
+    -DENABLE_CUBEB="${ENABLE_CUBEB}" \
+    -DENABLE_RESHADE="${ENABLE_RESHADE}" \
+    -DENABLE_LSFG="${ENABLE_LSFG}" \
+    -DUSE_DISCORD_PRESENCE=OFF \
+    -DLICHII_BUILD_TAG="${BUILD_TAG:-build-local}" \
+    -DLICHII_BUILD_PLATFORM=windows-x86_64
+
+cmake --build /src/build-windows --target lichii lichii-cmd --parallel "${JOBS}" --verbose -- -k 0
