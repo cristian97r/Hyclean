@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Linux, from any Docker host:
+#   docker compose up --build --abort-on-container-exit linux-amd64
+#   docker compose up --build --abort-on-container-exit linux-arm64   (needs an arm64 host or binfmt/QEMU)
+#
+# Windows, cross-compiled from Linux:
+#   docker compose up --build --abort-on-container-exit windows-amd64
+#
+# Each service copies its artifacts into ./builds/<platform>.
+# Set GIT_COMMIT, GIT_REFSPEC, BUILD_TAG, or the ENABLE_* switches in the
+# environment to change the build without editing this file.
+
+name: lichii-build
+
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
+  args: &args
+    GIT_COMMIT: ${GIT_COMMIT:-local}
+    GIT_REFSPEC: ${GIT_REFSPEC:-nx2}
+    BUILD_TAG: ${BUILD_TAG:-build-local}
+    BUILD_TYPE: ${BUILD_TYPE:-Release}
+    ENABLE_WERROR: ${ENABLE_WERROR:-OFF}
+    ENABLE_OPENGL: ${ENABLE_OPENGL:-ON}
+    ENABLE_LIBUSB: ${ENABLE_LIBUSB:-ON}
+    ENABLE_CUBEB: ${ENABLE_CUBEB:-ON}
+    ENABLE_RESHADE: ${ENABLE_RESHADE:-ON}
+    ENABLE_LSFG: ${ENABLE_LSFG:-ON}
+    ENABLE_UPDATE_CHECKER: ${ENABLE_UPDATE_CHECKER:-OFF}
+    ENABLE_WEB_SERVICE: ${ENABLE_WEB_SERVICE:-OFF}
+    ENABLE_QT_TRANSLATION: ${ENABLE_QT_TRANSLATION:-OFF}
+
+services:
+  linux-amd64:
+    platform: linux/amd64
+    build:
+      <<: *build
+      target: linux-artifacts
+      args:
+        <<: *args
+        BUILD_PLATFORM: linux-x86_64
+    image: lichii-build:linux-amd64
+    volumes:
+      - ./builds:/out
+
+  linux-arm64:
+    platform: linux/arm64
+    build:
+      <<: *build
+      target: linux-artifacts
+      args:
+        <<: *args
+        BUILD_PLATFORM: linux-aarch64
+    image: lichii-build:linux-arm64
+    volumes:
+      - ./builds:/out
+
+  windows-amd64:
+    platform: linux/amd64
+    build:
+      <<: *build
+      target: windows-cross-artifacts
+      args:
+        <<: *args
+        BUILD_PLATFORM: windows-x86_64
+    image: lichii-build:windows-amd64
+    volumes:
+      - ./builds:/out
