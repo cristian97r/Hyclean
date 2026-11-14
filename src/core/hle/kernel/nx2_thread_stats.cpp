@@ -7,6 +7,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <fmt/format.h>
 #include "common/cpu_features.h"
@@ -32,6 +34,10 @@ enum ThreadField : size_t {
     HintSpin,
     Memory,
     MemoryCalls,
+    MemoryReadTicks,
+    MemoryReads,
+    MemoryReadHits,
+    MemoryWriteHits,
     ReadBack,
     ReadBacks,
     Svcs,
@@ -103,6 +109,12 @@ u64 g_window_ticks{};
 s64 g_window_ns{};
 u64 g_window_presents{};
 std::array<Snapshot<CoreFields>, Core::Hardware::NUM_CPU_CORES> g_cores_previous{};
+
+// GPU-cached memory calls by guest page this window: reads, writes.
+// ponytail: one locked map for every core; per-core maps if the lock shows in the profile.
+std::mutex g_pages_mutex;
+std::unordered_map<u64, std::pair<u64, u64>> g_pages;
+std::unordered_set<u64> g_previous_pages; // Under g_report_mutex
 
 // For totals only one thread writes at a time: no locked instruction.
 void Add(std::atomic<u64>& total, u64 amount) {
@@ -213,13 +225,16 @@ void Report(u64 now) {
         LOG_INFO(Kernel,
                  "  t{}{} {} prio {} mask {:#x}: on core {:.2f} (JIT {:.2f}: game code {:.2f}, "
                  "counter polling {:.2f} of it {:.2f} tight, hint spin {:.2f}, cached memory {:.2f} "
-                 "in {:.1f} calls with read-back {:.2f} in {:.1f}; outside the JIT {:.2f} with "
-                 "{:.1f} SVCs), ready {:.2f}, waiting {:.2f} ({})",
+                 "in {:.1f} calls (reads {:.2f} in {:.1f}, {:.1f} in the read area; writes {:.2f} "
+                 "in {:.1f}, {:.1f} in the write area) with read-back {:.2f} in {:.1f}; outside "
+                 "the JIT {:.2f} with {:.1f} SVCs), ready {:.2f}, waiting {:.2f} ({})",
                  c.thread_id, presenter, c.process, c.priority.load(std::memory_order_relaxed),
                  c.affinity, ms(d[OnCore]), ms(d[Jit]), ms(game), ms(d[Poll]), ms(d[TightPoll]),
-                 ms(d[HintSpin]), ms(d[Memory]), per_frame(d[MemoryCalls]), ms(d[ReadBack]),
-                 per_frame(d[ReadBacks]), ms(outside), per_frame(d[Svcs]), ms(d[Ready]),
-                 ms(waited), waits);
+                 ms(d[HintSpin]), ms(d[Memory]), per_frame(d[MemoryCalls]),
+                 ms(d[MemoryReadTicks]), per_frame(d[MemoryReads]), per_frame(d[MemoryReadHits]),
+                 ms(d[Memory] - d[MemoryReadTicks]), per_frame(d[MemoryCalls] - d[MemoryReads]),
+                 per_frame(d[MemoryWriteHits]), ms(d[ReadBack]), per_frame(d[ReadBacks]),
+                 ms(outside), per_frame(d[Svcs]), ms(d[Ready]), ms(waited), waits);
     }
 
     for (size_t core = 0; core < g_cores.size(); ++core) {
@@ -248,6 +263,35 @@ void Report(u64 now) {
                  per_second(d[HintCounts + 1]), per_second(d[HintCounts + 2]),
                  per_second(d[HintCounts + 3]), per_second(d[HintCounts + 4]));
     }
+
+    std::unordered_map<u64, std::pair<u64, u64>> pages;
+    {
+        std::scoped_lock lk{g_pages_mutex};
+        pages.swap(g_pages);
+    }
+    std::vector<std::pair<u64, std::pair<u64, u64>>> top(pages.begin(), pages.end());
+    const auto calls = [](const auto& page) { return page.second.first + page.second.second; };
+    const size_t shown = std::min<size_t>(top.size(), 8);
+    std::partial_sort(top.begin(), top.begin() + shown, top.end(),
+                      [&](const auto& a, const auto& b) { return calls(a) > calls(b); });
+    size_t repeated = 0;
+    std::unordered_set<u64> seen;
+    seen.reserve(pages.size());
+    for (const auto& [page, counts] : pages) {
+        repeated += g_previous_pages.contains(page);
+        seen.insert(page);
+    }
+    g_previous_pages.swap(seen);
+    std::string list;
+    for (size_t i = 0; i < shown; ++i) {
+        list += fmt::format("{}{:#x} {:.1f} reads {:.1f} writes", i == 0 ? "" : ", ",
+                            top[i].first << 12, per_frame(top[i].second.first),
+                            per_frame(top[i].second.second));
+    }
+    LOG_INFO(Kernel,
+             "Cached memory pages over {:.1f} s: {} pages, {} also in the last window; top per "
+             "frame: {}",
+             seconds, pages.size(), repeated, list);
 }
 
 void MaybeReport(u64 now) {
@@ -295,6 +339,10 @@ void EndRun(KThread* thread, size_t core, u64 start, u64 end, Exit exit, u32 svc
         Add(t[HintSpin], run.hint_ticks);
         Add(t[Memory], run.memory_ticks);
         Add(t[MemoryCalls], run.memory_calls);
+        Add(t[MemoryReadTicks], run.memory_read_ticks);
+        Add(t[MemoryReads], run.memory_reads);
+        Add(t[MemoryReadHits], run.memory_read_hits);
+        Add(t[MemoryWriteHits], run.memory_write_hits);
         Add(t[ReadBack], run.read_back_ticks);
         Add(t[ReadBacks], run.read_backs);
         if (exit == Exit::Svc) {
@@ -346,6 +394,12 @@ void OnStateChanged(KThread* thread, s64 now, bool was_waiting, bool now_runnabl
                            std::memory_order_relaxed);
         c->wait_since.store(now, std::memory_order_relaxed);
     }
+}
+
+void CountPage(u64 page, bool write) {
+    std::scoped_lock lk{g_pages_mutex};
+    auto& counts = g_pages[page];
+    ++(write ? counts.second : counts.first);
 }
 
 void OnPresent(KThread* client) {

@@ -69,10 +69,14 @@ struct RunTally {
     u64 poll_ticks;       ///< The time between such reads: a loop polling the counter
     u64 tight_poll_ticks; ///< ...between reads under a seventh of the window (0.24 us) apart
     std::array<u64, Hints> hints;
-    u64 hint_ticks;      ///< The time between hints within the spin window of each other
-    u64 memory_ticks;    ///< In reads and writes of GPU-cached guest memory
-    u64 memory_calls;    ///< ...and how many
-    u64 read_back_ticks; ///< Of those: the calls that waited for a GPU download
+    u64 hint_ticks;        ///< The time between hints within the spin window of each other
+    u64 memory_ticks;      ///< In reads and writes of GPU-cached guest memory
+    u64 memory_calls;      ///< ...and how many
+    u64 memory_read_ticks; ///< Of those: reads
+    u64 memory_reads;
+    u64 memory_read_hits;  ///< ...within the core's read area: no OnCPURead
+    u64 memory_write_hits; ///< Writes within the core's write area: no OnCPUWrite
+    u64 read_back_ticks;   ///< Of those: the calls that waited for a GPU download
     u64 read_backs;
 };
 
@@ -100,14 +104,25 @@ constexpr void CountHint(RunTally& run, size_t hint, u64 ticks, u64 spin_ticks) 
     run.last_hint = ticks;
 }
 
-constexpr void CountMemory(RunTally& run, u64 ticks, bool read_back) {
+/// A read or write of GPU-cached memory; `hit` when the core's area covered it.
+constexpr void CountMemory(RunTally& run, u64 ticks, bool write, bool hit, bool read_back) {
     run.memory_ticks += ticks;
     ++run.memory_calls;
+    if (write) {
+        run.memory_write_hits += hit;
+    } else {
+        run.memory_read_ticks += ticks;
+        ++run.memory_reads;
+        run.memory_read_hits += hit;
+    }
     if (read_back) {
         run.read_back_ticks += ticks;
         ++run.read_backs;
     }
 }
+
+/// The guest page of a GPU-cached memory call, for the report's top pages.
+void CountPage(u64 page, bool write);
 
 inline void BeginRun() {
     t_run = {};

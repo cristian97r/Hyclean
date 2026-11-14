@@ -35,10 +35,15 @@ TEST_CASE("Guest thread stats count hints by type and the time between close one
 
 TEST_CASE("Guest thread stats split read-backs from other cached memory calls", "[nx2][kernel]") {
     Stats::RunTally run{};
-    Stats::CountMemory(run, 7, false);
-    Stats::CountMemory(run, 300, true);
-    CHECK(run.memory_calls == 2);
-    CHECK(run.memory_ticks == 307);
+    Stats::CountMemory(run, 7, true, true, false);
+    Stats::CountMemory(run, 300, false, false, true);
+    Stats::CountMemory(run, 5, false, true, false);
+    CHECK(run.memory_calls == 3);
+    CHECK(run.memory_ticks == 312);
+    CHECK(run.memory_reads == 2);
+    CHECK(run.memory_read_ticks == 305);
+    CHECK(run.memory_read_hits == 1);
+    CHECK(run.memory_write_hits == 1);
     CHECK(run.read_backs == 1);
     CHECK(run.read_back_ticks == 300);
 }
