@@ -1321,6 +1321,7 @@ bool GraphicsPipeline::ConfigureDelta(bool is_indexed) {
                                                        desc.indirect_offset);
                 ++ssbo_index;
             }
+            Profile::Add(Profile::Counter::DeltaStorageBinds, ssbo_index);
         }
     }
     {

@@ -1156,6 +1156,15 @@ void Maxwell3D::ProcessCBBind(size_t stage_index) {
         return; // slot field is 5 bits; the state array holds 18
     }
     auto& buffer = state.shader_stages[stage_index].const_buffers[bind_data.shader_slot];
+    if (VideoCommon::Nx2Profile::Enabled()) [[unlikely]] {
+        namespace Profile = VideoCommon::Nx2Profile;
+        Profile::Add(Profile::Counter::CBBinds, 1);
+        if (buffer.enabled == (bind_data.valid.Value() != 0) &&
+            buffer.address == regs.const_buffer.Address() &&
+            buffer.size == regs.const_buffer.size) {
+            Profile::Add(Profile::Counter::SameCBBinds, 1);
+        }
+    }
     if (VideoCommon::Nx2FastDraw::Enabled() &&
         (buffer.enabled != (bind_data.valid.Value() != 0) ||
          buffer.address != regs.const_buffer.Address() || buffer.size != regs.const_buffer.size)) {
