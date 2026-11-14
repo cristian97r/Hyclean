@@ -166,7 +166,7 @@ The movie frame count stub at `0x3C46BC4` (56 bytes) uses the same helper and sl
 
 FPS Unlock keeps two state ranges. `0x4E9FE00..0x4E9FEA8` (end exclusive) is Dark's timer
 state, the water slots (through `+0x98`, cave `0x3C46300`) and the sound gate (`+0xA0..+0xA8`,
-caves `0x3C46280` and `0x3C46800`). The step state is `0x4E9EE00..0x4E9EF10`: a replacement
+caves `0x3C46290` and `0x3C46800`). The step state is `0x4E9EE00..0x4E9EF10`: a replacement
 index at `+0`, then 16 slots of `{u64 counter address, f32 remainder, pad}` at `+0x10`. Both
 must be zero-filled BSS, or the whole patch is skipped.
 
