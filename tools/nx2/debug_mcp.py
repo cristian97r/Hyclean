@@ -186,6 +186,20 @@ TOOLS = [
         },
     },
     {
+        "name": "write_memory",
+        "description": "Writes up to 64 KiB of hex bytes (memory order) to the game's guest "
+                       "virtual memory while it runs. Fails before writing if any byte is "
+                       "unmapped. For data only: the JIT does not see code changes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "address": {"type": ["string", "integer"]},
+                "hex": {"type": "string"},
+            },
+            "required": ["address", "hex"],
+        },
+    },
+    {
         "name": "search_memory",
         "description": "Finds a byte pattern (hex pairs in memory order: little endian, so 1.0f "
                        "is '0000803f') in the mapped guest memory of the heap region (default) or "

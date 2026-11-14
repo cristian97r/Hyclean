@@ -591,6 +591,27 @@ json ReadMemory(ToolState& state, const json& params) {
     return result;
 }
 
+// Debug-only data poke (teleport tests). ponytail: no JIT cache invalidation, so writes to code
+// pages may not take effect; add Core::System::InvalidateCpuInstructionCacheRange if needed.
+json WriteMemory(ToolState& state, const json& params) {
+    const u64 address = AddressParam(params, "address");
+    const std::vector<u8> bytes = ParseHexBytes(params.at("hex").get<std::string>());
+    if (bytes.empty() || bytes.size() > MAX_READ) {
+        throw std::runtime_error{fmt::format("write 1 to {} bytes", MAX_READ)};
+    }
+    Memory::Memory& memory = Application(state).GetMemory();
+    for (size_t offset = 0; offset < bytes.size(); ++offset) {
+        if (GuestByte(memory, address + offset) == nullptr) {
+            throw std::runtime_error{
+                fmt::format("guest address {:#x} is not mapped", address + offset)};
+        }
+    }
+    for (size_t offset = 0; offset < bytes.size(); ++offset) {
+        *const_cast<u8*>(GuestByte(memory, address + offset)) = bytes[offset];
+    }
+    return {{"address", HexAddress(address)}, {"size", bytes.size()}};
+}
+
 json SearchMemory(ToolState& state, const json& params) {
     const std::vector<u8> pattern = ParseHexBytes(params.at("pattern").get<std::string>());
     if (pattern.size() > 256) {
@@ -777,6 +798,7 @@ Handlers MakeHandlers(const std::shared_ptr<ToolState>& state) {
         {"speed_limit", handler(SpeedLimit)},
         {"host_timing", handler(HostTiming)},
         {"read_memory", handler(ReadMemory)},
+        {"write_memory", handler(WriteMemory)},
         {"search_memory", handler(SearchMemory)},
         {"read_gpu_memory", handler(ReadGpuMemory)},
         {"input", waiting(Input)},
