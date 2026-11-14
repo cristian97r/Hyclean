@@ -476,8 +476,7 @@ bool MemoryAllocator::CreateImageInSeparatePool(const VkImageCreateInfo& ci,
     const VkMemoryRequirements requirements = device.GetLogical().GetImageMemoryRequirements(image);
     u32 memory_type{};
     if (requirements.size <= Device::SeparatePoolBlockSize / 2 &&
-        vmaFindMemoryTypeIndex(allocator, requirements.memoryTypeBits, &alloc_ci, &memory_type) ==
-            VK_SUCCESS) {
+        vmaFindMemoryTypeIndexForImageInfo(allocator, &ci, &alloc_ci, &memory_type) == VK_SUCCESS) {
         if (const VmaPool pool =
                 device.GetSeparatePool(Device::SeparatePool::RenderTargets, memory_type)) {
             VmaAllocationCreateInfo pool_ci = alloc_ci;
