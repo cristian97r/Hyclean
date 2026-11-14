@@ -3,6 +3,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <chrono>
 #include "core/arm/exclusive_monitor.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_address_arbiter.h"
@@ -13,6 +14,7 @@
 #include "core/hle/kernel/k_thread_queue.h"
 #include "core/hle/kernel/k_typed_address.h"
 #include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/nx2_address_wait_trace.h"
 #include "core/hle/kernel/svc_results.h"
 #include "core/memory.h"
 
@@ -24,6 +26,23 @@ KAddressArbiter::KAddressArbiter(Core::System& system_)
 KAddressArbiter::~KAddressArbiter() = default;
 
 namespace {
+
+s64 TraceNow() {
+    return Nx2AddressWaitTrace::g_enabled
+               ? std::chrono::duration_cast<std::chrono::nanoseconds>(
+                     std::chrono::steady_clock::now().time_since_epoch())
+                     .count()
+               : 0;
+}
+
+Result TraceWaitEnd(KThread* thread, uint64_t addr, s64 start) {
+    const Result result = thread->GetWaitResult();
+    if (Nx2AddressWaitTrace::g_enabled) [[unlikely]] {
+        Nx2AddressWaitTrace::OnWaitEnd(thread, addr, TraceNow() - start,
+                                       result == ResultTimedOut);
+    }
+    return result;
+}
 
 bool ReadFromUser(KernelCore& kernel, s32* out, KProcessAddress address) {
     *out = GetCurrentMemory(kernel).Read32(GetInteger(address));
@@ -156,6 +175,10 @@ Result KAddressArbiter::Signal(uint64_t addr, s32 count) {
                (it->GetAddressArbiterKey() == addr)) {
             // End the thread's wait.
             KThread* target_thread = std::addressof(*it);
+            if (Nx2AddressWaitTrace::g_enabled) [[unlikely]] {
+                Nx2AddressWaitTrace::OnSignal(target_thread,
+                                              GetCurrentThreadPointer(system.Kernel()));
+            }
             target_thread->EndWait(system.Kernel(), ResultSuccess);
 
             ASSERT(target_thread->IsWaitingForAddressArbiter());
@@ -185,6 +208,10 @@ Result KAddressArbiter::SignalAndIncrementIfEqual(uint64_t addr, s32 value, s32 
                (it->GetAddressArbiterKey() == addr)) {
             // End the thread's wait.
             KThread* target_thread = std::addressof(*it);
+            if (Nx2AddressWaitTrace::g_enabled) [[unlikely]] {
+                Nx2AddressWaitTrace::OnSignal(target_thread,
+                                              GetCurrentThreadPointer(system.Kernel()));
+            }
             target_thread->EndWait(system.Kernel(), ResultSuccess);
 
             ASSERT(target_thread->IsWaitingForAddressArbiter());
@@ -248,6 +275,10 @@ Result KAddressArbiter::SignalAndModifyByWaitingCountIfEqual(uint64_t addr, s32 
                (it->GetAddressArbiterKey() == addr)) {
             // End the thread's wait.
             KThread* target_thread = std::addressof(*it);
+            if (Nx2AddressWaitTrace::g_enabled) [[unlikely]] {
+                Nx2AddressWaitTrace::OnSignal(target_thread,
+                                              GetCurrentThreadPointer(system.Kernel()));
+            }
             target_thread->EndWait(system.Kernel(), ResultSuccess);
 
             ASSERT(target_thread->IsWaitingForAddressArbiter());
@@ -265,6 +296,7 @@ Result KAddressArbiter::WaitIfLessThan(uint64_t addr, s32 value, bool decrement,
     KThread* cur_thread = GetCurrentThreadPointer(system.Kernel());
     KHardwareTimer* timer{};
     ThreadQueueImplForKAddressArbiter wait_queue(system.Kernel(), std::addressof(m_tree));
+    const s64 start = TraceNow();
 
     {
         KScopedSchedulerLockAndSleep slp{system.Kernel(), std::addressof(timer), cur_thread, timeout};
@@ -312,7 +344,7 @@ Result KAddressArbiter::WaitIfLessThan(uint64_t addr, s32 value, bool decrement,
     }
 
     // Get the result.
-    return cur_thread->GetWaitResult();
+    return TraceWaitEnd(cur_thread, addr, start);
 }
 
 Result KAddressArbiter::WaitIfEqual(uint64_t addr, s64 value, s64 timeout, bool is_64_bit) {
@@ -320,6 +352,7 @@ Result KAddressArbiter::WaitIfEqual(uint64_t addr, s64 value, s64 timeout, bool 
     KThread* cur_thread = GetCurrentThreadPointer(system.Kernel());
     KHardwareTimer* timer{};
     ThreadQueueImplForKAddressArbiter wait_queue(system.Kernel(), std::addressof(m_tree));
+    const s64 start = TraceNow();
 
     {
         KScopedSchedulerLockAndSleep slp{system.Kernel(), std::addressof(timer), cur_thread, timeout};
@@ -368,7 +401,7 @@ Result KAddressArbiter::WaitIfEqual(uint64_t addr, s64 value, s64 timeout, bool 
     }
 
     // Get the result.
-    return cur_thread->GetWaitResult();
+    return TraceWaitEnd(cur_thread, addr, start);
 }
 
 } // namespace Kernel
