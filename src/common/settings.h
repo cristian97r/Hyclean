@@ -64,6 +64,7 @@ SETTING(u16, false);
 SWITCHABLE(AnisotropyMode, true);
 SWITCHABLE(AntiAliasing, false);
 SWITCHABLE(OotAntiAliasing, false);
+SWITCHABLE(OcarinaRenderScale, false);
 SWITCHABLE(NvidiaDlssQuality, false);
 SWITCHABLE(NvidiaDlssPreset, false);
 SWITCHABLE(HdrMode, false);
@@ -462,6 +463,10 @@ struct Values {
     // pass, or the tonemapped image as the game renders it (video_core/oot_network.h).
     SwitchableSetting<OotAntiAliasing> oot_anti_aliasing{linkage, OotAntiAliasing::Game,
                                                          "oot_anti_aliasing", Category::Renderer};
+    // The render size the game itself uses under the Max Resolution add-on (fractions of
+    // 2560x1440), independent of NVIDIA DLSS.
+    SwitchableSetting<OcarinaRenderScale> ocarina_render_scale{
+        linkage, OcarinaRenderScale::Native, "ocarina_render_scale", Category::Renderer};
 
     SwitchableSetting<std::string> post_shader_chain{linkage,
                                                      std::string(),
@@ -1145,6 +1150,9 @@ NvidiaDlssRuntimeSettings GetNvidiaDlssRuntimeSettings();
 /// The NVIDIA DLSS quality whose render scale Ocarina of Time's built-in patch applies when the
 /// game starts: Balanced, Performance or Ultra Performance with NVIDIA DLSS on, docked.
 std::optional<NvidiaDlssQuality> OcarinaDlssRenderScale();
+/// The render scale the game itself renders at (a fraction of 2560x1440), independent of DLSS:
+/// Balanced, Performance or Ultra Performance, docked.
+std::optional<OcarinaRenderScale> OcarinaRenderScaleSetting();
 /// The quality whose render-scale patch the running game's main module got (none: unpatched).
 void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality);
 std::optional<NvidiaDlssQuality> AppliedOcarinaRenderScale();

@@ -1013,3 +1013,48 @@ TEST_CASE("Built-in DLSS render scale follows the NVIDIA DLSS quality", "[patch_
         CHECK(patch.name.find("render scale") == std::string::npos);
     }
 }
+
+TEST_CASE("Built-in render scale follows the Ocarina render scale setting", "[patch_manager]") {
+    constexpr size_t ScaleOffset = sizeof(Loader::NSOHeader) + 0x806420;
+    constexpr u32 ScaleOne = 0x52A7F009;
+    struct SettingsGuard {
+        ~SettingsGuard() {
+            Settings::values.ocarina_render_scale.SetValue(Settings::OcarinaRenderScale::Native);
+            Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Handheld);
+            Settings::values.disabled_addons[OcarinaTitleId].clear();
+        }
+    } guard;
+    PatchManagerTestContext context;
+    auto nso = MakeMain(OcarinaBuildId, TbzInstruction);
+    nso.resize(ScaleOffset + sizeof(u32));
+    std::memcpy(nso.data() + ScaleOffset, &ScaleOne, sizeof(ScaleOne));
+    const auto scale = [&] { return WordAt(context.Manager().PatchNSO(nso, "main"), ScaleOffset); };
+
+    Settings::values.nvidia_dlss.SetValue(false);
+    Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Docked);
+    using Scale = Settings::OcarinaRenderScale;
+    for (const auto& [setting, word] : std::array<std::pair<Scale, u32>, 4>{{
+             {Scale::Native, ScaleOne},
+             {Scale::Balanced, 0x52A7EBE9},
+             {Scale::Performance, 0x52A7E809},
+             {Scale::UltraPerformance, 0x52A7E009},
+         }}) {
+        Settings::values.ocarina_render_scale.SetValue(setting);
+        CHECK(scale() == word);
+        CHECK(Settings::AppliedOcarinaRenderScale() ==
+              (word != ScaleOne ? std::optional{static_cast<Settings::NvidiaDlssQuality>(
+                                      static_cast<u32>(setting) + 2)}
+                                : std::nullopt));
+    }
+
+    Settings::values.ocarina_render_scale.SetValue(Scale::Performance);
+    Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Handheld);
+    CHECK(scale() == ScaleOne);
+    Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Docked);
+    Settings::values.disabled_addons[OcarinaTitleId] = {std::string{MaxResolution}};
+    CHECK(scale() == ScaleOne);
+
+    for (const auto& patch : context.Manager().GetPatches()) {
+        CHECK(patch.name.find("render scale") == std::string::npos);
+    }
+}

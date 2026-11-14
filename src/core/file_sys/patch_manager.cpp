@@ -66,6 +66,9 @@ struct BuiltinPatch {
     // Applies only with NVIDIA DLSS on at this quality in docked mode, and is not listed in
     // Add-Ons.
     std::optional<Settings::NvidiaDlssQuality> dlss_quality{};
+    // Applies only when this render scale is selected (a fraction of 2560x1440), independent of
+    // NVIDIA DLSS.
+    std::optional<Settings::OcarinaRenderScale> render_scale{};
 };
 
 constexpr std::string_view MAX_RESOLUTION_NAME = "Max Resolution (built-in)";
@@ -471,6 +474,31 @@ constexpr std::array BUILTIN_PATCHES{
         .build_id = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348",
         .records = RENDER_ULTRA_RECORDS,
         .dlss_quality = Settings::NvidiaDlssQuality::UltraPerformance,
+    },
+    // The same sites without NVIDIA DLSS: the setting is the render size the game itself uses.
+    BuiltinPatch{
+        .name = "Render scale Balanced (built-in)",
+        .title_id = 0x0400486024DEC000,
+        .module = "main",
+        .build_id = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348",
+        .records = RENDER_BALANCED_RECORDS,
+        .render_scale = Settings::OcarinaRenderScale::Balanced,
+    },
+    BuiltinPatch{
+        .name = "Render scale Performance (built-in)",
+        .title_id = 0x0400486024DEC000,
+        .module = "main",
+        .build_id = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348",
+        .records = RENDER_PERFORMANCE_RECORDS,
+        .render_scale = Settings::OcarinaRenderScale::Performance,
+    },
+    BuiltinPatch{
+        .name = "Render scale Ultra Performance (built-in)",
+        .title_id = 0x0400486024DEC000,
+        .module = "main",
+        .build_id = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348",
+        .records = RENDER_ULTRA_RECORDS,
+        .render_scale = Settings::OcarinaRenderScale::UltraPerformance,
     },
 };
 
@@ -932,6 +960,15 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
                 continue;
             }
         }
+        if (patch.render_scale) {
+            // The site is the Max Resolution branch's fixed-scale path: dead without it.
+            const bool wanted = Settings::OcarinaRenderScaleSetting() == patch.render_scale &&
+                                std::find(disabled.cbegin(), disabled.cend(),
+                                          MAX_RESOLUTION_NAME) == disabled.cend();
+            if (!wanted) {
+                continue;
+            }
+        }
         if (patch.build_id != build_id) {
             LOG_INFO(Loader, "    - Skipping \"{}\": build id {} is not {}", patch.name, build_id,
                      patch.build_id);
@@ -1019,6 +1056,10 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
         }
         if (patch.dlss_quality) {
             Settings::SetAppliedOcarinaRenderScale(patch.dlss_quality);
+        } else if (patch.render_scale) {
+            // Balanced, Performance and Ultra Performance sit 2 apart in the two enums.
+            Settings::SetAppliedOcarinaRenderScale(static_cast<Settings::NvidiaDlssQuality>(
+                static_cast<u32>(*patch.render_scale) + 2));
         }
     }
 
@@ -1579,7 +1620,7 @@ std::vector<Patch> PatchManager::GetPatches(VirtualFile update_raw) const {
     }
 
     for (const auto& patch : BUILTIN_PATCHES) {
-        if (patch.title_id != title_id || patch.dlss_quality) {
+        if (patch.title_id != title_id || patch.dlss_quality || patch.render_scale) {
             continue;
         }
         const auto is_disabled = [&](std::string_view name) {
