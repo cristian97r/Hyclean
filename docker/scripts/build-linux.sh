@@ -48,4 +48,4 @@ set -- lichii
 if [ "${LICHII_CMD}" = ON ]; then
     set -- "$@" lichii-cmd
 fi
-cmake --build /src/build --target "$@" --parallel "${JOBS}"
+nice -n "${BUILD_NICE:-0}" cmake --build /src/build --target "$@" --parallel "${JOBS}"
