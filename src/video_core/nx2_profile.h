@@ -74,6 +74,9 @@ enum class Zone : u32 {
     WorkerIdle,           ///< VulkanWorker waiting for work
     PresentWait,          ///< Present waits for the Vulkan worker or a free presentation frame
     QueueSubmit,          ///< vkQueueSubmit
+    StateBlock,           ///< Split GPU thread: the back stores a block of 3D register writes
+    DeferredCall,         ///< Split GPU thread: the back runs a function the front deferred
+    IdleHook,             ///< Split GPU thread: the back's idle hook (deferred submit)
     Count,
 };
 
@@ -88,7 +91,7 @@ inline constexpr std::array<const char*, static_cast<size_t>(Zone::Count)> zone_
     "writer wait", "list submit wait", "list GPU wait", "graphics pipeline miss",
     "compute pipeline miss", "pipeline wait", "shader capture", "texture cache", "GPU wait",
     "present", "worker idle",
-    "present wait", "queue submit",
+    "present wait", "queue submit", "state block", "deferred call", "idle hook",
 };
 
 static_assert(static_cast<size_t>(Zone::Count) <= StutterTrace::ZoneSlots);
