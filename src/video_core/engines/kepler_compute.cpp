@@ -373,6 +373,7 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
                 if (checked) {
                     DrainCheck::NoteBackRead(address, descriptor);
                 }
+                dispatch_qmd = address;
                 if (VideoCommon::ListMacroTrace::g_enabled) {
                     VideoCommon::ListMacroTrace::NoteQmd(address, descriptor);
                 }
@@ -1651,6 +1652,7 @@ bool KeplerCompute::TryFireEmblemUpscale(bool allow_history) {
 
 void KeplerCompute::ProcessLaunch() {
     const GPUVAddr launch_desc_loc = regs.launch_desc_loc.Address();
+    dispatch_qmd = launch_desc_loc;
     memory_manager.ReadBlockUnsafe(launch_desc_loc, &launch_description,
                                    LaunchParams::NUM_LAUNCH_PARAMETERS * sizeof(u32));
     rasterizer->DispatchCompute();
