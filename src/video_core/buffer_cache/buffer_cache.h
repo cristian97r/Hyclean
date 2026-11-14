@@ -162,6 +162,20 @@ void BufferCache<P>::TickFrame() {
                      "mismatches",
                      keep.kept, keep.streamed_binds, keep.verified, keep.mismatches);
         }
+        if constexpr (!IS_OPENGL && VideoCommon::StreamUniformReusable<Runtime>) {
+            auto& reuse = VideoCommon::UniformStreamReuseState<typename Runtime::StreamUniformRef>();
+            if (reuse.count) {
+                const auto& s = reuse.stats;
+                LOG_INFO(HW_GPU,
+                         "Uniform streams in 600 frames: {} rebound, {} copied with the same "
+                         "bytes (new command buffer), {} copied changed, {} direct ({} of them "
+                         "the same bytes)",
+                         s.rebound, s.copied_unchanged, s.copied_changed, s.direct,
+                         s.direct_unchanged);
+            }
+            reuse.stats = {};
+            reuse.count = Nx2Profile::Enabled();
+        }
         keep.kept = keep.streamed_binds = keep.verified = keep.mismatches = 0;
     }
     if (frame_tick % 600 == 0 && !uploaded_buffer_ranges.empty()) {

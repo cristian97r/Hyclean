@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <thread>
 #include <utility>
@@ -85,6 +87,58 @@ private:
     size_t site;
     std::optional<std::chrono::steady_clock::time_point> start;
 };
+
+// Methods the back runs, by 3D method index, while the profile is on (back thread only).
+struct BackMethodCounts {
+    std::array<u64, 0x10000> maxwell3d{};
+    u64 other_engines{};
+    std::chrono::steady_clock::time_point next{};
+};
+std::unique_ptr<BackMethodCounts> g_back_methods;
+
+void CountBackMethod(const Tegra::Engines::EngineInterface* engine, u32 method, u64 count = 1) {
+    if (!g_back_methods) [[likely]] {
+        return;
+    }
+    if (engine->reports_fast_draw_breaks) {
+        g_back_methods->maxwell3d[method & 0xffff] += count;
+    } else {
+        g_back_methods->other_engines += count;
+    }
+}
+
+void ReportBackMethods() {
+    auto& counts = *g_back_methods;
+    const auto now = std::chrono::steady_clock::now();
+    if (now < counts.next) {
+        return;
+    }
+    const bool first = counts.next == std::chrono::steady_clock::time_point{};
+    counts.next = now + std::chrono::seconds{10};
+    if (!first) {
+        std::array<u32, 16> top{};
+        u64 total = 0;
+        for (u32 method = 0; method < counts.maxwell3d.size(); ++method) {
+            const u64 n = counts.maxwell3d[method];
+            total += n;
+            if (n <= counts.maxwell3d[top.back()]) {
+                continue;
+            }
+            auto it = std::find_if(top.begin(), top.end(),
+                                   [&](u32 m) { return n > counts.maxwell3d[m]; });
+            std::move_backward(it, top.end() - 1, top.end());
+            *it = method;
+        }
+        std::string line;
+        for (const u32 method : top) {
+            line += fmt::format(" {:#x} {}/s", method, counts.maxwell3d[method] / 10);
+        }
+        LOG_INFO(HW_GPU, "Back methods in 10 s: 3D {}/s, other engines {}/s; top 3D:{}",
+                 total / 10, counts.other_engines / 10, line);
+    }
+    counts.maxwell3d.fill(0);
+    counts.other_engines = 0;
+}
 
 } // Anonymous namespace
 
@@ -760,6 +814,7 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
         const u32 method = static_cast<u32>((head >> 8) & 0xffff);
         const u32 argument = static_cast<u32>(head >> 32);
         auto* const engine = back_engine;
+        CountBackMethod(engine, method);
         if (engine->fast_maxwell3d) {
             // Nx2Perf: as below without the profile zones (off with fast_maxwell3d) and the
             // virtual call.
@@ -785,6 +840,7 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
                     arguments[count] = static_cast<u32>(next >> 32);
                     ++count;
                 }
+                CountBackMethod(engine, method, count - 1);
                 maxwell3d->ConsumeSink(*system);
                 if (count == 1) {
                     maxwell3d->CallMethod(*system, method, argument, true);
@@ -832,6 +888,7 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
         const u32 amount = static_cast<u32>(head >> 32);
         const size_t data = (head & HasSegment) != 0 ? 3 : 2;
         auto* const engine = back_engine;
+        CountBackMethod(engine, method, amount);
         if (!engine->reports_fast_draw_breaks) {
             Nx2FastDraw::Break(Nx2FastDraw::Reason::OtherEngine);
         }
@@ -849,6 +906,9 @@ size_t GpuSplit::Execute(const u64* entry, size_t words) {
         const u32 last_break = (head & HasBreak) != 0 ? static_cast<u32>((head >> 8) & 0xffff)
                                                       : Tegra::Engines::Maxwell3D::NoBreak;
         Nx2Profile::Scope scope{Nx2Profile::Zone::Method};
+        for (size_t i = 0; g_back_methods && i < count; ++i) {
+            CountBackMethod(back_engine, static_cast<u32>(entry[1 + StateFlagWords + i]));
+        }
         static_cast<Tegra::Engines::Maxwell3D*>(back_engine)
             ->WriteStateRegisters(*system, std::span<const u64, StateFlagWords>{entry + 1, StateFlagWords},
                                   std::span<const u64>{entry + 1 + StateFlagWords, count}, last_break);
@@ -885,8 +945,14 @@ void GpuSplit::BackLoop(std::stop_token stop_token) {
     u64 read_position = 0;
     const bool idle_trace = BackIdleTrace::Enabled();
     u64 idle_since = 0;
+    if (Nx2Profile::Enabled()) {
+        g_back_methods = std::make_unique<BackMethodCounts>();
+    }
     while (!stop_token.stop_requested()) {
         Nx2Profile::Report("GPU back thread", true);
+        if (g_back_methods) {
+            ReportBackMethods();
+        }
         u64 available = published.load(std::memory_order_acquire);
         if (available == read_position) {
             Nx2Profile::Scope scope{Nx2Profile::Zone::SplitWait};
