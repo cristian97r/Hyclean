@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Deny everything, then allow only what the build reads.
+
+*
+!.patch
+!.patch/**
+!CMakeLists.txt
+!CMakeModules
+!CMakeModules/**
+!cpmfile.json
+!docker
+!docker/**
+!externals
+!externals/**
+!src
+!src/**
+!dist
+!dist/**
+!VERSION
+!LICENSE.txt
+!LICENSES
+!LICENSES/**
+!tools
+!tools/windows
+!tools/windows/**
