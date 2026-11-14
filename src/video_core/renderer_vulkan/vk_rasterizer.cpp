@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -89,30 +88,6 @@ using VideoCommon::ImageViewType;
 
 
 namespace {
-
-/// EDEN_NX2_EFFECT_PACE_HASHES=<hash>,... (experiment): compute shaders (frame dump hashes) that
-/// advance once per guest frame; above 60 fps they run only on frames where 60 Hz time has passed.
-const std::unordered_set<u64>& EffectPaceHashes() {
-    static const std::unordered_set<u64> hashes = [] {
-        std::unordered_set<u64> result;
-        const char* text = std::getenv("EDEN_NX2_EFFECT_PACE_HASHES");
-        for (std::string_view rest = text ? text : ""; !rest.empty();) {
-            const auto comma = rest.find(',');
-            const std::string_view item = rest.substr(0, comma);
-            u64 hash{};
-            if (std::from_chars(item.data(), item.data() + item.size(), hash, 16).ec == std::errc{}) {
-                result.insert(hash);
-            }
-            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-        }
-        if (!result.empty()) {
-            LOG_INFO(Render_Vulkan, "EDEN_NX2_EFFECT_PACE_HASHES: {} compute shaders paced to 60 Hz",
-                     result.size());
-        }
-        return result;
-    }();
-    return hashes;
-}
 
 /// read_gpu_memory: the first address space (the bound channel's first) that maps the whole range,
 /// read as the GPU reads it, without flushing GPU caches.
@@ -2419,9 +2394,6 @@ void RasterizerVulkan::DispatchCompute() {
                      kepler_compute->GetIndirectComputeAddress() ? " (indirect grid)" : "");
         }
     }
-    if (effect_pace_skip && EffectPaceHashes().contains(pipeline->ShaderHash())) {
-        return;
-    }
     std::scoped_lock lock{texture_cache.mutex, buffer_cache.mutex};
     std::optional<ByteAddressedShadow> byte_addressed_shadow;
     buffer_cache.Nx2CollectListCopies(true);
@@ -3722,21 +3694,6 @@ void RasterizerVulkan::TickFrame() {
         TickDrawReuse();
     }
     frame_dump.TickFrame();
-    if (!EffectPaceHashes().empty()) {
-        // 60 Hz ticks from present time, only while presents average under 90 % of a period
-        // (present jitter at 60 fps never skips). Time carries over (up to a period).
-        constexpr double Period = 1.0 / 60.0;
-        const auto now = std::chrono::steady_clock::now();
-        const double interval =
-            std::min(std::chrono::duration<double>(now - effect_pace_last).count(), 0.1);
-        effect_pace_last = now;
-        effect_pace_interval += (interval - effect_pace_interval) / 16;
-        effect_pace_accumulator = std::min(effect_pace_accumulator + interval, 2 * Period);
-        effect_pace_skip = effect_pace_interval < Period * 0.9 && effect_pace_accumulator < Period;
-        if (!effect_pace_skip) {
-            effect_pace_accumulator = std::max(effect_pace_accumulator - Period, 0.0);
-        }
-    }
     ++render_trace_frame;
     render_trace_draws = 0;
     render_trace_clears = 0;
