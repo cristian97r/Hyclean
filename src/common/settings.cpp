@@ -47,6 +47,7 @@ SETTING(u16, false);
 SWITCHABLE(AnisotropyMode, true);
 SWITCHABLE(AntiAliasing, false);
 SWITCHABLE(OotAntiAliasing, false);
+SWITCHABLE(OcarinaRenderScale, false);
 SWITCHABLE(NvidiaDlssQuality, false);
 SWITCHABLE(NvidiaDlssPreset, false);
 SWITCHABLE(HdrMode, false);
@@ -108,6 +109,14 @@ std::optional<NvidiaDlssQuality> OcarinaDlssRenderScale() {
         return std::nullopt;
     }
     return quality;
+}
+
+std::optional<OcarinaRenderScale> OcarinaRenderScaleSetting() {
+    const auto scale = values.ocarina_render_scale.GetValue();
+    if (scale == OcarinaRenderScale::Native || !IsDockedMode()) {
+        return std::nullopt;
+    }
+    return scale;
 }
 
 void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality) {

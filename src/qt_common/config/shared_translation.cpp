@@ -258,6 +258,12 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "network, which sharpens heavily.\nNo sharpening: the image as the game renders it, "
               "without the network (faster; pairs well with a higher resolution). Has no effect while "
               "NVIDIA DLSS is on.\nTakes effect when the game starts."));
+    INSERT(Settings, ocarina_render_scale, tr("Ocarina of Time render scale:"),
+           tr("The Legend of Zelda: Ocarina of Time only, docked, with the Max Resolution add-on "
+              "on. The render size the game itself uses: a fraction of 2560x1440, before the "
+              "emulator's resolution scaling. Native keeps 2560x1440; Performance is 1920x1080. "
+              "Independent of NVIDIA DLSS, which overrides this when it applies its own render "
+              "scale.\nTakes effect when the game starts."));
     INSERT(Settings, post_shader_chain, QString(), QString());
     INSERT(Settings, post_shader_preset, QString(), QString());
     INSERT(Settings, post_shader_enabled, tr("Enable post-processing effects"),
@@ -709,6 +715,14 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                           {
                               PAIR(OotAntiAliasing, Game, tr("Game")),
                               PAIR(OotAntiAliasing, NoSharpening, tr("No sharpening")),
+                          }});
+    translations->insert({Settings::EnumMetadata<Settings::OcarinaRenderScale>::Index(),
+                          {
+                              PAIR(OcarinaRenderScale, Native, tr("Native (2560x1440)")),
+                              PAIR(OcarinaRenderScale, Balanced, tr("Balanced (2276x1280)")),
+                              PAIR(OcarinaRenderScale, Performance, tr("Performance (1920x1080)")),
+                              PAIR(OcarinaRenderScale, UltraPerformance,
+                                   tr("Ultra Performance (1280x720)")),
                           }});
     translations->insert({Settings::EnumMetadata<Settings::HdrMode>::Index(),
                           {
