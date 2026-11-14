@@ -72,6 +72,18 @@ public:
         }
     }
 
+    /// Bind outcomes, counted while `count` is set (the profile is on). Direct binds then also
+    /// compare, so `direct_unchanged` says how many of them streamed the same bytes again.
+    struct Stats {
+        u64 rebound;          ///< Same bytes, same command buffer: the last allocation again
+        u64 copied_unchanged; ///< Same bytes in a new command buffer: copied again
+        u64 copied_changed;
+        u64 direct;
+        u64 direct_unchanged;
+    };
+    bool count{};
+    Stats stats{};
+
     std::array<std::array<Slot, NumSlots>, NumStages> slots{};
     std::array<u8, MaxBytes> scratch{};
 };
@@ -111,7 +123,16 @@ template <class Runtime, class DeviceMemory>
         // A slot whose bytes change every bind: read straight into its bytes, no compare (from
         // skolvolt 9267908a3d). The bytes stay the last bind's, for keeps and their verify.
         --slot.direct;
-        device_memory.ReadBlockUnsafe(device_addr, slot.bytes.data(), size);
+        if (reuse.count) {
+            ++reuse.stats.direct;
+            device_memory.ReadBlockUnsafe(device_addr, reuse.scratch.data(), size);
+            if (slot.size == size && std::memcmp(slot.bytes.data(), reuse.scratch.data(), size) == 0) {
+                ++reuse.stats.direct_unchanged;
+            }
+            std::memcpy(slot.bytes.data(), reuse.scratch.data(), size);
+        } else {
+            device_memory.ReadBlockUnsafe(device_addr, slot.bytes.data(), size);
+        }
         slot.size = size;
         const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
         std::memcpy(span.data(), slot.bytes.data(), size);
@@ -127,7 +148,11 @@ template <class Runtime, class DeviceMemory>
     if (same_bytes && slot.tick == runtime.CurrentTick()) {
         slot.misses = 0;
         runtime.RebindStreamUniform(slot.ref, size);
+        reuse.stats.rebound += reuse.count;
         return true;
+    }
+    if (reuse.count) {
+        ++(same_bytes ? reuse.stats.copied_unchanged : reuse.stats.copied_changed);
     }
     const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
     std::memcpy(span.data(), scratch, size);
