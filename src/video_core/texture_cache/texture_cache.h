@@ -194,28 +194,8 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         }
         return true;
     };
-    const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode, &CanEvict,
-                          out_of_memory](ImageId image_id) {
-        if (num_iterations == 0) {
-            return true;
-        }
-        bool must_download = false;
-        if (!CanEvict(image_id, &must_download)) {
-            return false;
-        }
-        --num_iterations;
+    const auto DeleteEvicted = [&, this](ImageId image_id) {
         auto& image = slot_images[image_id];
-        if (must_download) {
-            auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
-            const auto copies = FullDownloadCopies(image.info);
-            image.DownloadMemory(map, copies);
-            runtime.Finish();
-            SwizzleImage(*gpu_memory, image.gpu_addr, image.info, copies, map.mapped_span, swizzle_data_buffer);
-            ++gc_download_deletes;
-            ClearStaleImage(image);
-        } else {
-            MarkStale(image); // before UntrackImage (see MarkStale)
-        }
         if (True(image.flags & ImageFlagBits::Tracked)) {
             UntrackImage(image, image_id);
         }
@@ -235,7 +215,7 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
                                                    : "gc";
         DeleteImage(image_id, image.scale_tick > frame_tick + 5);
         if (out_of_memory) {
-            return false;
+            return;
         }
         if (aggressive_mode && total_used_memory < critical_memory) {
             num_iterations >>= 2;
@@ -243,6 +223,60 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         } else if (high_priority_mode && total_used_memory < expected_memory) {
             num_iterations >>= 1;
             high_priority_mode = false;
+        }
+    };
+    // Batched download deletes: submit the pass's downloads first, wait for the host GPU once,
+    // then swizzle and delete (the copies only read, so deleting one image does not disturb
+    // another's copy). A batch is capped so the staging memory held at once stays bounded.
+    constexpr size_t MaxGcBatchBytes = 64_MiB;
+    using GcMap = decltype(runtime.DownloadStagingBuffer(size_t{}));
+    using GcCopies = decltype(FullDownloadCopies(std::declval<const ImageInfo&>()));
+    struct GcDownload {
+        ImageId image_id;
+        GcMap map;
+        GcCopies copies;
+    };
+    boost::container::small_vector<GcDownload, 16> staged_downloads;
+    size_t staged_download_bytes = 0;
+    const auto FlushStagedDownloads = [&] {
+        if (staged_downloads.empty()) {
+            return;
+        }
+        runtime.Finish();
+        for (GcDownload& entry : staged_downloads) {
+            auto& image = slot_images[entry.image_id];
+            SwizzleImage(*gpu_memory, image.gpu_addr, image.info, entry.copies,
+                         entry.map.mapped_span, swizzle_data_buffer);
+            ++gc_download_deletes;
+            ClearStaleImage(image);
+            DeleteEvicted(entry.image_id);
+        }
+        staged_downloads.clear();
+        staged_download_bytes = 0;
+    };
+    const auto Cleanup = [&, this](ImageId image_id) {
+        if (num_iterations == 0) {
+            return true;
+        }
+        bool must_download = false;
+        if (!CanEvict(image_id, &must_download)) {
+            return false;
+        }
+        --num_iterations;
+        auto& image = slot_images[image_id];
+        if (must_download) {
+            if (!staged_downloads.empty() &&
+                staged_download_bytes + image.unswizzled_size_bytes > MaxGcBatchBytes) {
+                FlushStagedDownloads();
+            }
+            auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
+            const auto copies = FullDownloadCopies(image.info);
+            image.DownloadMemory(map, copies);
+            staged_download_bytes += image.unswizzled_size_bytes;
+            staged_downloads.push_back(GcDownload{image_id, map, std::move(copies)});
+        } else {
+            MarkStale(image); // before UntrackImage (see MarkStale)
+            DeleteEvicted(image_id);
         }
         return false;
     };
@@ -324,10 +358,13 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
         Collect(old_age);
         evict_old_costly = false;
     }
+    FlushStagedDownloads();
     Collect();
+    FlushStagedDownloads();
     if (out_of_memory || total_used_memory >= critical_memory) {
         Configure(true);
         Collect();
+        FlushStagedDownloads();
     }
 }
 
