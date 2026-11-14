@@ -297,6 +297,9 @@ public:
         Count,
     };
     static constexpr VkDeviceSize SeparatePoolBlockSize = 16ULL << 20;
+    /// DeviceBuffers: buffer cache buffers live a few per block, so 16 MiB blocks stayed pinned
+    /// mostly empty.
+    static constexpr VkDeviceSize DeviceBufferBlockSize = 4ULL << 20;
 
     /// The pool of that kind for a memory type, created on first use unless !create (null if
     /// that failed or it doesn't exist).
