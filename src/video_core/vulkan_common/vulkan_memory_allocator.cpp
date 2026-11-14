@@ -288,6 +288,11 @@ VkResult MemoryAllocator::AllocateImage(const VkImageCreateInfo &ci, bool dedica
         VmaAllocationCreateInfo relaxed = alloc_ci;
         relaxed.flags &= ~VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
         result = vmaCreateImage(allocator, &ci, &relaxed, &handle, &allocation, &alloc_info);
+        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && relaxed.requiredFlags != 0) {
+            // VRAM is really full: host memory is slow, but a missing image crashes.
+            relaxed.requiredFlags = 0;
+            result = vmaCreateImage(allocator, &ci, &relaxed, &handle, &allocation, &alloc_info);
+        }
     }
     if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && !huge) {
         pressure_events.fetch_add(1, std::memory_order_relaxed);
