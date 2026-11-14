@@ -70,4 +70,4 @@ cmake -S /src -B /src/build-windows -G Ninja \
     -DLICHII_BUILD_TAG="${BUILD_TAG:-build-local}" \
     -DLICHII_BUILD_PLATFORM=windows-x86_64
 
-cmake --build /src/build-windows --target lichii lichii-cmd --parallel "${JOBS}" --verbose -- -k 0
+nice -n "${BUILD_NICE:-0}" cmake --build /src/build-windows --target lichii lichii-cmd --parallel "${JOBS}" --verbose -- -k 0
