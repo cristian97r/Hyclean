@@ -117,16 +117,20 @@ constexpr std::array<u8, 120> DYNAMIC_FPS_ROUTINE{
     0x21, 0x1E, 0xC3, 0x00, 0x00, 0x1C, 0x03, 0x09, 0x23, 0x1E, 0x40, 0x20, 0x23, 0x1E, 0x4D,
     0x00, 0x00, 0x54, 0x48, 0x40, 0x20, 0x1E, 0xC0, 0x03, 0x5F, 0xD6, 0x0A, 0xD7, 0x83, 0x3F,
 };
-constexpr std::array<u8, 128> FPS_UNLOCK_ROUTINE{
+constexpr std::array<u8, 144> FPS_UNLOCK_ROUTINE{
     DYNAMIC_FPS_ROUTINE_HEAD,
-    // Unlock tail: the smoothed real-time step in 1/60-s units is clamped into [0.02, 6.0] and
-    // always returned, so logic follows real time above 60 fps too (0.5 units/frame at 120 fps)
-    // and down to 10 fps (6.0 matches the 100 ms delta cap). At 60 fps it equals Dark's tail.
-    // 0x5C: ldr s3, +0x78 (0.02f) ; fmaxnm s2, s2, s3 ; 0x64: ldr s3, +0x7c (6.0f) ;
-    // fminnm s2, s2, s3 ; fmov s8, s2 ; ret ; nop ; 0.02f ; 6.0f
-    0x21, 0x1E, 0xE3, 0x00, 0x00, 0x1C, 0x42, 0x68, 0x23, 0x1E, 0xC3, 0x00, 0x00, 0x1C, 0x42,
-    0x78, 0x23, 0x1E, 0x48, 0x40, 0x20, 0x1E, 0xC0, 0x03, 0x5F, 0xD6, 0x1F, 0x20, 0x03, 0xD5,
-    0x0A, 0xD7, 0xA3, 0x3C, 0x00, 0x00, 0xC0, 0x40,
+    // Unlock tail: the smoothed real-time step in 1/60-s units is clamped into [0.02, 6.0]. When
+    // it is within +-3 % of the game's own step (s2/s8 in [993/1024, 1056/1024)) the routine
+    // returns that step, so fixed-step effects tick exactly once per frame at the nominal rate
+    // instead of 0 or 2 times on jitter; above 60 fps it returns the real-time step (0.5
+    // units/frame at 120 fps) down to 10 fps (6.0 matches the 100 ms delta cap).
+    // 0x5C: ldr s3, +0x2c (0.02f) ; fmaxnm s2, s2, s3 ; ldr s3, +0x28 (6.0f) ; fminnm s2, s2, s3 ;
+    // fdiv s3, s2, s8 ; fcvtzs w11, s3, #10 ; sub w11, w11, #1024 ; add w11, w11, #31 ;
+    // cmp w11, #62 ; fcsel s8, s8, s2, ls ; ret ; 0.02f ; 6.0f
+    0x21, 0x1E, 0x63, 0x01, 0x00, 0x1C, 0x42, 0x68, 0x23, 0x1E, 0x43, 0x01, 0x00, 0x1C, 0x42,
+    0x78, 0x23, 0x1E, 0x43, 0x18, 0x28, 0x1E, 0x6B, 0xD8, 0x18, 0x1E, 0x6B, 0x01, 0x10, 0x51,
+    0x6B, 0x7D, 0x00, 0x11, 0x7F, 0xF9, 0x00, 0x71, 0x08, 0x9D, 0x22, 0x1E, 0xC0, 0x03, 0x5F,
+    0xD6, 0x0A, 0xD7, 0xA3, 0x3C, 0x00, 0x00, 0xC0, 0x40,
 };
 #undef DYNAMIC_FPS_ROUTINE_HEAD
 // The water ripple simulation runs iterations * (int)step passes per frame, so any step below 1.0
@@ -166,7 +170,7 @@ constexpr std::array<u8, 148> WATER_STEPS_ROUTINE{
 constexpr std::array<u8, 4> SOUND_ENTRY_ORIGINAL{0x7F, 0x23, 0x03, 0xD5}; // pacibsp
 constexpr std::array<u8, 4> SOUND_ENTRY_BRANCH{0x40, 0xC5, 0xE0, 0x14};   // b main+0x3C46800
 constexpr std::array<u8, 4> SOUND_STEP_ORIGINAL{0x00, 0x11, 0x40, 0xBD};  // ldr s0, [x8, #0x10]
-constexpr std::array<u8, 4> SOUND_STEP_CALL{0xD3, 0xC3, 0xE0, 0x94};      // bl main+0x3C46280
+constexpr std::array<u8, 4> SOUND_STEP_CALL{0xD7, 0xC3, 0xE0, 0x94};      // bl main+0x3C46290
 // adrp x16, state ; add x16, x16, #0xea0 ; cbnz w2, other ; adrp x9, time ; ldr x9, [x9, #0x890] ;
 // ldr x9, [x9] ; ldr s16, [x9, #0x10] ; fmov s17, #1.0 ; fcmp s16, s17 ; b.ge every_frame ;
 // ldr s18, [x16] ; fadd s18, s18, s16 ; fcmp s18, s17 ; b.lt wait ; fsub s18, s18, s17 ;
@@ -371,7 +375,7 @@ constexpr std::array FPS_UNLOCK_RECORDS{
     BuiltinPatchRecord{0x415300, SOUND_ENTRY_BRANCH, SOUND_ENTRY_ORIGINAL},
     BuiltinPatchRecord{0x415334, SOUND_STEP_CALL, SOUND_STEP_ORIGINAL},
     BuiltinPatchRecord{0x3C46800, SOUND_GATE, {}, true},
-    BuiltinPatchRecord{0x3C46280, SOUND_FEED, {}, true},
+    BuiltinPatchRecord{0x3C46290, SOUND_FEED, {}, true},
     BuiltinPatchRecord{0xA68300, STEP_HUD_HOOK, STEP_HUD_ORIGINAL},
     BuiltinPatchRecord{0x3C46900, STEP_HUD_ROUTINE, {}, true},
     BuiltinPatchRecord{0x3293410, STEP_REPLAY_HOOK, STEP_REPLAY_ORIGINAL},

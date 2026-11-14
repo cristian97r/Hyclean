@@ -1,10 +1,13 @@
-# Ocarina Dynamic FPS add-on
+# Ocarina Dynamic FPS and FPS Unlock add-ons
 
-`Dynamic FPS by Dark (built-in)` is a game Add-On, enabled by default for Ocarina.
-It targets title `0400486024DEC000`, module `main`, build ID
-`E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348` only. Max Resolution remains a
-separate, default-on Add-On. Either can be disabled independently in Add-Ons;
-the existing disabled-add-on configuration persists that choice.
+`FPS Unlock (built-in)` and `Dynamic FPS by Dark (built-in)` are game Add-Ons for
+Ocarina; FPS Unlock is enabled by default. They target title `0400486024DEC000`,
+module `main`, build ID `E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348` only. Both
+install the same routine head (Dark's timestamp smoothing and step computation)
+and differ only in the tail; FPS Unlock lists Dynamic FPS as replaced by it when
+it applies, and either can be disabled independently in Add-Ons. Max Resolution
+remains a separate, default-on Add-On. The existing disabled-add-on
+configuration persists that choice.
 
 ## Credit and source
 
@@ -13,7 +16,8 @@ Dark, an Eglantine developer, wrote the routine. This port preserves the call an
 `765659af4ccb7201d1145c57f3b45ce84653cea0`. That commit explicitly states that
 Dark gave permission to bundle it. Frizti supplied the built-in integration.
 CTGL's #299 changed one instruction: the delta cap is `CNTFRQ / 10` instead of
-`CNTFRQ / 20`.
+`CNTFRQ / 20`. FPS Unlock keeps the first 92 bytes of the routine and replaces
+its 28-byte tail with a 52-byte tail, so its routine is 144 bytes.
 
 The routine's SHA-256 is
 `0afb4af10a78bb49372e6807fc5b71d9fa99d828b7625f0fab7429fc66a4b1e6`
@@ -36,9 +40,10 @@ does not consume the routine's clobbered scratch registers or flags before
 intervening calls or redefinition.
 
 The original text ends at `0x3C461D0`; read-only data starts at `0x3C47000`.
-The routine occupies `0x3C46200` through `0x3C46277`, in executable alignment
-padding, not original text. `AppLoader_NSO::LoadModule` zero-initializes the
-module image before copying segments and rounds the text mapping to a page.
+The routine occupies `0x3C46200` through `0x3C46277` (Dark's) or `0x3C4628F`
+(FPS Unlock), in executable alignment padding, not original text.
+`AppLoader_NSO::LoadModule` zero-initializes the module image before copying
+segments and rounds the text mapping to a page.
 The loader checks that this space is still zero-filled executable padding
 before installing the routine.
 
@@ -84,15 +89,23 @@ by the game again before it writes them.
 The routine reads `CNTPCT_EL0` and `CNTFRQ_EL0`. After its first call, it caps
 the timestamp difference at `CNTFRQ / 10`, or 100 ms, then smooths it by adding
 one eighth of the signed difference from the previous smoothed value.
-It calculates `s2 = (smoothed_ticks / CNTFRQ) * s1`. It replaces the original
-`s8 = s1 / s0` only when `s2 > 1.03 * s8`.
-The original code selects `s1` as 30 or 60 and converts the integer field at
-`x21 + 0x2C8` into `s0`, so the result is a frame-step scale, not seconds.
+It calculates `s2 = (smoothed_ticks / CNTFRQ) * s1`. The original code selects
+`s1` as 30 or 60 and converts the integer field at `x21 + 0x2C8` into `s0`, so
+the result is a frame-step scale, not seconds.
 
-This is not a promise of correct game speed at every frame rate. It retains
-the original step as a floor, caps long frames, and smooths changes. Actual
-gameplay speed and the runtime value of that frame-rate field still require
-live validation.
+Dark's tail replaces the original `s8 = s1 / s0` only when `s2 > 1.03 * s8`.
+The FPS Unlock tail (144 bytes) instead clamps `s2` into `[0.02, 6.0]` and
+returns the game's own step `s8` when `s2 / s8` is within +-3 % of one
+(`s2/s8` in `[993/1024, 1056/1024)`); otherwise it returns the clamped `s2`. At
+a locked 60 fps the step is therefore exactly the game's 1.0, so fixed-step
+effects tick once per frame instead of 0 or 2 times on jitter; above 60 fps it
+is the real-time step (0.5 units per frame at 120 fps), and it keeps real speed
+down to 10 fps.
+
+This is not a promise of correct game speed at every frame rate. Above the
+nominal rate, effects driven by the rounded integer frame count that the step
+computes elsewhere in the game may still be uneven, and gameplay speed and the
+runtime value of that frame-rate field require live validation.
 
 In Lichii, `CoreTiming::GetClockTicks` scales the counter for CPU Boost and
 Overclock, while Dynarmic's advertised counter frequency stays unchanged.
@@ -116,7 +129,7 @@ area and shop music; #716, #1092).
 The sound manager job at `0x415300` (phase in `w2`: phase 0 reads the step and
 updates the sound engine, phase 1 follows) is entered every frame. FPS Unlock
 replaces its first instruction, `pacibsp`, with `b 0x3C46800` (124-byte gate)
-and its step load at `0x415334`, `ldr s0, [x8, #0x10]`, with `bl 0x3C46280`
+and its step load at `0x415334`, `ldr s0, [x8, #0x10]`, with `bl 0x3C46290`
 (16 bytes, returns `max(step, 1.0)`). In phase 0 the gate runs the job as before
 when the step is at least 1.0. Below that it adds the step to an accumulator
 at `0x4E9FEA0` and runs the job only once a whole step has built up, keeping
@@ -126,8 +139,8 @@ whole steps and sound still follows real time; at 60 fps and below nothing
 changes. FPS Unlock's timer state grows to `0xA8` bytes to cover both words.
 Dynamic FPS never lowers the step below 1.0 and does not include the gate.
 
-Both caves are in the executable padding after the text (`0x3C46280` follows
-the FPS routine at `0x3C46200`; `0x3C46800` is past the other caves in use).
+Both caves are in the executable padding after the text (`0x3C46290` follows
+the 144-byte FPS routine at `0x3C46200`; `0x3C46800` is past the other caves in use).
 
 ## FPS Unlock step counters
 
@@ -168,7 +181,7 @@ FPS Unlock reserves `0x1C0` bytes from `0x4E9FE00`. Its step state occupies
 `0x4E9FEB0..0x4E9FFC0` (end exclusive): a replacement index at `+0`, then 16
 slots of `{u64 counter address, f32 remainder, pad}` at `+0x10`. The range
 `0x4E9FE10..0x4E9FEB0` holds the water slots (state through `+0x98`, cave `0x3C46300`)
-and the sound gate (state through `+0xA8`, caves `0x3C46280` and `0x3C46800`), so the
+and the sound gate (state through `+0xA8`, caves `0x3C46290` and `0x3C46800`), so the
 three patches share the timer state without overlapping.
 
 ## FPS Unlock movie frame count

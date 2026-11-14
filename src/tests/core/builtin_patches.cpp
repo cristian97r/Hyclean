@@ -44,7 +44,7 @@ constexpr size_t DynamicCallOffset = sizeof(Loader::NSOHeader) + 0x6E6CC4;
 constexpr size_t DynamicRoutineOffset = sizeof(Loader::NSOHeader) + 0x3C46200;
 constexpr size_t DynamicStateOffset = sizeof(Loader::NSOHeader) + 0x4E9FE00;
 constexpr size_t DynamicRoutineSize = 120;
-constexpr size_t UnlockRoutineSize = 128;
+constexpr size_t UnlockRoutineSize = 144;
 constexpr size_t DynamicStateSize = 0x98;
 constexpr size_t WaterHookOffset = sizeof(Loader::NSOHeader) + 0x475F8;
 constexpr size_t WaterMulOffset = sizeof(Loader::NSOHeader) + 0x4760C;
@@ -62,11 +62,11 @@ constexpr std::string_view WaterRoutine =
 constexpr size_t SoundEntryOffset = sizeof(Loader::NSOHeader) + 0x415300;
 constexpr size_t SoundStepOffset = sizeof(Loader::NSOHeader) + 0x415334;
 constexpr size_t SoundGateOffset = sizeof(Loader::NSOHeader) + 0x3C46800;
-constexpr size_t SoundFeedOffset = sizeof(Loader::NSOHeader) + 0x3C46280;
+constexpr size_t SoundFeedOffset = sizeof(Loader::NSOHeader) + 0x3C46290;
 constexpr u32 SoundEntryOriginalInstruction = 0xD503237F; // pacibsp
 constexpr u32 SoundEntryBranchInstruction = 0x14E0C540;   // b main+0x3C46800
 constexpr u32 SoundStepOriginalInstruction = 0xBD401100;  // ldr s0, [x8, #0x10]
-constexpr u32 SoundStepCallInstruction = 0x94E0C3D3;      // bl main+0x3C46280
+constexpr u32 SoundStepCallInstruction = 0x94E0C3D7;      // bl main+0x3C46290
 constexpr std::string_view SoundGate =
     "D09200B010823A9102030035C9810090294944F9290140F9301140BD11102E1E0022311EAA010054"
     "120240BD522A301E4022311ECB000054523A311E120200BD29008052090600B90A000014120200BD"
@@ -416,8 +416,8 @@ TEST_CASE("Built-in FPS Unlock defaults on and replaces Dynamic FPS", "[patch_ma
     auto patched = manager.PatchNSO(nso, "main");
     REQUIRE(WordAt(patched, DynamicCallOffset) == DynamicCallInstruction);
     REQUIRE(routine(patched, UnlockRoutineSize) ==
-            std::string{RoutineHead} + "E300001C4268231EC300001C4278231E4840201EC0035FD6"
-                                       "1F2003D50AD7A33C0000C040");
+            std::string{RoutineHead} + "6301001C4268231E4301001C4278231E4318281E6BD8181E6B011051"
+                                       "6B7D00117FF90071089D221EC0035FD60AD7A33C0000C040");
     REQUIRE(WordAt(patched, TurnSpeedHookOffset) == TurnSpeedHookInstruction);
     REQUIRE(WordAt(patched, TurnSpeedHookOffset + 4) == TurnSpeedSecondInstruction);
     REQUIRE(Common::HexToString(
