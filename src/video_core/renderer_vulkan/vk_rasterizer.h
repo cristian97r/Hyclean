@@ -6,6 +6,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
@@ -370,6 +371,11 @@ private:
         std::array<f32, 4> origin{};
         std::array<f32, 280 * 12> bones{};
     } oot_actor, oot_previous_actor;
+    /// EDEN_NX2_EFFECT_PACE_HASHES (experiment): this frame skips the listed compute shaders
+    bool effect_pace_skip{};
+    double effect_pace_accumulator{};
+    double effect_pace_interval{1.0 / 60.0}; ///< smoothed present interval (s)
+    std::chrono::steady_clock::time_point effect_pace_last{};
     u64 render_trace_frame = 0;
     u32 render_trace_draws = 0;
     u32 render_trace_clears = 0;
