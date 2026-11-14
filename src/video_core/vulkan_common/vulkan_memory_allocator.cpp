@@ -760,14 +760,19 @@ void LogMemoryTrace(const Device& device) {
     vmaCalculateStatistics(allocator, &stats);
     std::string types;
     for (u32 type = 0; type < properties->memoryTypeCount; ++type) {
-        const VmaStatistics& s = stats.memoryType[type].statistics;
+        const VmaDetailedStatistics& d = stats.memoryType[type];
+        const VmaStatistics& s = d.statistics;
         if (s.blockCount == 0) {
             continue;
         }
-        fmt::format_to(std::back_inserter(types), "{}{} (heap {}, flags {:#x}): {} allocs {}/{} MiB",
+        fmt::format_to(std::back_inserter(types),
+                       "{}{} (heap {}, flags {:#x}): {} allocs {}/{} MiB in {} blocks, {} free "
+                       "ranges (largest {} MiB, largest alloc {} MiB)",
                        types.empty() ? "" : "; ", type, properties->memoryTypes[type].heapIndex,
                        static_cast<u32>(properties->memoryTypes[type].propertyFlags),
-                       s.allocationCount, s.allocationBytes >> 20, s.blockBytes >> 20);
+                       s.allocationCount, s.allocationBytes >> 20, s.blockBytes >> 20,
+                       s.blockCount, d.unusedRangeCount, d.unusedRangeSizeMax >> 20,
+                       d.allocationSizeMax >> 20);
     }
     LOG_INFO(Render_Vulkan, "Memory trace: types {}", types);
 }
