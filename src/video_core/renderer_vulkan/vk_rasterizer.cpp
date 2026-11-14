@@ -2402,7 +2402,8 @@ void RasterizerVulkan::DispatchCompute() {
         for (const VideoCommon::ImageViewId id : pipeline->WrittenImages()) {
             written.push_back(&texture_cache.GetImageView(id));
         }
-        frame_dump.CaptureDispatch(pipeline->ShaderHash(), written);
+        frame_dump.CaptureDispatch(pipeline->ShaderHash(), kepler_compute->regs.code_loc.Address(),
+                                   written);
     };
     TracePendingCpuWrites(true, std::array{pipeline->ShaderHash()});
     if (frame_dump.CapturingSampled()) {
@@ -2411,7 +2412,8 @@ void RasterizerVulkan::DispatchCompute() {
             sampled.push_back({5, image.tic, &texture_cache.GetImageView(image.id),
                                &texture_cache.GetSampler(image.sampler)});
         }
-        frame_dump.NoteDispatchSampled(pipeline->ShaderHash(), sampled);
+        frame_dump.NoteDispatchSampled(pipeline->ShaderHash(), kepler_compute->regs.code_loc.Address(),
+                                       sampled);
     }
     if (frame_dump.CapturingBuffers()) {
         FrameDumpBuffers(true, std::array{pipeline->ShaderHash()});
