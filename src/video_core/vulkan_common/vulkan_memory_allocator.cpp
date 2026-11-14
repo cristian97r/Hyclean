@@ -244,7 +244,10 @@ VkResult MemoryAllocator::AllocateImage(const VkImageCreateInfo &ci, bool dedica
                      (dedicated ? VmaAllocationCreateFlags{VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT}
                                : VmaAllocationCreateFlags{0}),
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-            .requiredFlags = 0,
+            // Over budget, VMA would quietly place the image in host memory, where it stays and
+            // the GPU samples it over PCIe. Fail instead so the pressure path below runs.
+            .requiredFlags = device.IsIntegrated() ? VkMemoryPropertyFlags{0}
+                                                   : VkMemoryPropertyFlags{VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT},
             .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             .memoryTypeBits = 0,
             .pool = VK_NULL_HANDLE,
