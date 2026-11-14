@@ -61,13 +61,21 @@ TEST_CASE("Address wait trace reports the threads with the most wait time and th
     table.Add(88, 0x1000, 1'000'000, Trace::Timeout);
     table.Add(88, 0x2000, 500'000, 90);
     table.Add(95, 0x1000, 2'000'000, 88);
-    const auto lines = table.Report(1.0, [](u64 id) { return "t" + std::to_string(id); });
-    REQUIRE(lines.size() == 9);
-    CHECK(lines[1] == "  t88 waits 4.50 ms/s on addresses:");
-    CHECK(lines[2] == "    0x1000: 2 waits/s, 4.00 ms/s; woken by t95 1, timeout 1");
-    CHECK(lines[3] == "    0x2000: 1 waits/s, 0.50 ms/s; woken by t90 1");
-    CHECK(lines[4] == "  t95 waits 2.00 ms/s on addresses:");
-    CHECK(lines[6] == "  All threads:");
-    CHECK(lines[7] == "    0x1000: 3 waits/s, 6.00 ms/s; woken by t88 1, t95 1, timeout 1");
-    CHECK(lines[8] == "    0x2000: 1 waits/s, 0.50 ms/s; woken by t90 1");
+    for (u64 id = 100; id < 104; ++id) {
+        table.Add(id, 0x3000, 9'000'000, Trace::Timeout);
+    }
+    const auto name = [](u64 id) { return "t" + std::to_string(id); };
+    const auto lines = table.Report(1.0, name, {88, 77});
+    REQUIRE(lines.size() == 17);
+    // Four sleepers rank first; t88 and t77 (no waits) are listed because they are forced.
+    CHECK(lines[1] == "  t100 waits 9.00 ms/s on addresses:");
+    CHECK(lines[9] == "  t88 waits 4.50 ms/s on addresses:");
+    CHECK(lines[10] ==
+          "    0x1000: 2 waits/s, 4.00 ms/s; woken by t95 1 (3.00 ms/s), timeout 1 (1.00 ms/s)");
+    CHECK(lines[11] == "    0x2000: 1 waits/s, 0.50 ms/s; woken by t90 1 (0.50 ms/s)");
+    CHECK(lines[12] == "  t77 waits 0.00 ms/s on addresses:");
+    CHECK(lines[13] == "  All threads:");
+    CHECK(lines[14] == "    0x3000: 4 waits/s, 36.00 ms/s; woken by timeout 4 (36.00 ms/s)");
+    CHECK(lines[15] == "    0x1000: 3 waits/s, 6.00 ms/s; woken by t95 1 (3.00 ms/s), t88 1 "
+                       "(2.00 ms/s), timeout 1 (1.00 ms/s)");
 }
