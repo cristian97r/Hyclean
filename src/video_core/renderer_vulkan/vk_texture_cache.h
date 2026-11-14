@@ -74,6 +74,63 @@ struct ByteAddressedRange {
     return VkExtent2D{width / 2, height};
 }
 
+/// Host images of deleted cache images, by shape, for the next image of the same shape: games
+/// recreate their render targets at drifting guest addresses every frame, and vkCreateImage plus
+/// its memory cost far more than taking one back. Images come here once the GPU is done with them.
+class ImagePool {
+public:
+    struct Key {
+        VkImageCreateFlags flags;
+        VkFormat format;
+        VkImageType type;
+        u32 width;
+        u32 height;
+        u32 depth;
+        u32 levels;
+        u32 layers;
+        VkSampleCountFlagBits samples;
+        VkImageUsageFlags usage;
+        const VkFormat* view_formats; ///< ViewFormats spans are static per format
+        size_t num_view_formats;
+
+        bool operator==(const Key&) const noexcept = default;
+    };
+
+    explicit ImagePool(Scheduler& scheduler_) : scheduler{scheduler_} {}
+
+    [[nodiscard]] static Key MakeKey(const VkImageCreateInfo& ci,
+                                     std::span<const VkFormat> view_formats) noexcept;
+
+    /// A pooled image of this shape, or a null one.
+    [[nodiscard]] vk::Image Take(const Key& key);
+
+    void Give(const Key& key, vk::Image image);
+
+    /// Ages entries out; drops them all when an image failed for lack of memory.
+    void TickFrame(u32 failed_images);
+
+    [[nodiscard]] u64 TakeReused() noexcept {
+        return std::exchange(reused, 0);
+    }
+    [[nodiscard]] u64 Bytes() const noexcept {
+        return bytes;
+    }
+
+private:
+    struct Entry {
+        Key key;
+        vk::Image image;
+        u64 bytes;
+        u64 tick; ///< Taken only once the GPU is past it (immediate deletes skip the wait)
+        u32 unused_frames;
+    };
+    Scheduler& scheduler;
+    std::vector<Entry> entries;
+    u64 bytes{};
+    u64 reused{};
+    u32 seen_failed_images{};
+};
+
 class TextureCacheRuntime {
 public:
     explicit TextureCacheRuntime(const Device& device_, Scheduler& scheduler_,
@@ -256,6 +313,7 @@ public:
     RenderPassCache& render_pass_cache;
     DescriptorPool& descriptor_pool;
     ComputePassDescriptorQueue& compute_pass_descriptor_queue;
+    ImagePool image_pool;
 
     /// FSR 3.1 in place of a DLSS evaluation (TemporalUpscale), created on first use.
     bool UpscaleWithFsr3(Framebuffer* dst_framebuffer, ImageView& input_color,
@@ -597,6 +655,10 @@ private:
 
     Scheduler* scheduler{};
     TextureCacheRuntime* runtime{};
+    /// Set for images that go back to runtime->image_pool. Declared before the images, which
+    /// MakeImage fills them for.
+    std::optional<ImagePool::Key> pool_key;
+    std::optional<ImagePool::Key> scaled_pool_key;
 
     /// Memory bound to the layers of a SparseLayers image. Declared before the images, so it is
     /// released after them.

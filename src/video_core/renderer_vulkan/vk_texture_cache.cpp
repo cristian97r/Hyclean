@@ -541,7 +541,8 @@ constexpr u64 MaxFreeTranscodeBytes = u64{256} << 20;
                                   const ImageInfo& info, std::span<const VkFormat> view_formats,
                                   std::optional<VkFormat> format_override = {},
                                   bool unbacked = false, bool aliased = false,
-                                  bool may_fail = false) {
+                                  bool may_fail = false, ImagePool* pool = nullptr,
+                                  std::optional<ImagePool::Key>* pool_key = nullptr) {
     if (info.type == ImageType::Buffer) {
         return vk::Image{};
     }
@@ -584,6 +585,12 @@ constexpr u64 MaxFreeTranscodeBytes = u64{256} << 20;
     }
     if (unbacked) {
         if (vk::Image image = allocator.CreateUnbackedImage(image_ci, aliased)) {
+            return image;
+        }
+    } else if (pool != nullptr) {
+        // Contents don't matter: a new Image starts uninitialized (layout UNDEFINED) either way.
+        *pool_key = ImagePool::MakeKey(image_ci, view_formats);
+        if (vk::Image image = pool->Take(**pool_key)) {
             return image;
         }
     }
@@ -1320,7 +1327,7 @@ TextureCacheRuntime::TextureCacheRuntime(const Device& device_, Scheduler& sched
     : device{device_}, scheduler{scheduler_}, memory_allocator{memory_allocator_},
       staging_buffer_pool{staging_buffer_pool_}, blit_image_helper{blit_image_helper_},
       render_pass_cache{render_pass_cache_}, descriptor_pool{descriptor_pool_},
-      compute_pass_descriptor_queue{compute_pass_descriptor_queue_},
+      compute_pass_descriptor_queue{compute_pass_descriptor_queue_}, image_pool{scheduler_},
       resolution{Settings::values.resolution_info} {
     // Before anything below reads astc_recompression (passes, view formats).
     UseBc3ForSwitch2OnSmallCards(device);
@@ -3023,6 +3030,7 @@ void TextureCacheRuntime::TickFrame() {
     std::erase_if(pending_resolve_shadows, [this](const auto& pending) {
         return scheduler.IsFree(pending.first);
     });
+    image_pool.TickFrame(memory_allocator.FailedImages());
 }
 
 Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu_addr_,
@@ -3043,7 +3051,7 @@ Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu
                                    IsUnwrittenSparse(runtime_.device, info, gpu_addr_),
                                UsesSparseTiles(runtime_.device, info, gpu_addr_) &&
                                    SparseTilesModeOf(runtime_.device) == SparseTilesMode::Aliased,
-                               true)),
+                               true, &runtime_.image_pool, &pool_key)),
       aspect_mask(ImageAspectMask(info.format)) {
     if (OutOfMemory()) {
         return;
@@ -3132,6 +3140,80 @@ Image::~Image() {
             runtime->EraseResolveShadow(*scaled_image);
         }
     }
+    if (runtime != nullptr) {
+        if (pool_key && original_image) {
+            runtime->image_pool.Give(*pool_key, std::move(original_image));
+        }
+        if (scaled_pool_key && scaled_image) {
+            runtime->image_pool.Give(*scaled_pool_key, std::move(scaled_image));
+        }
+    }
+}
+
+ImagePool::Key ImagePool::MakeKey(const VkImageCreateInfo& ci,
+                                  std::span<const VkFormat> view_formats) noexcept {
+    return Key{
+        .flags = ci.flags,
+        .format = ci.format,
+        .type = ci.imageType,
+        .width = ci.extent.width,
+        .height = ci.extent.height,
+        .depth = ci.extent.depth,
+        .levels = ci.mipLevels,
+        .layers = ci.arrayLayers,
+        .samples = ci.samples,
+        .usage = ci.usage,
+        .view_formats = view_formats.data(),
+        .num_view_formats = view_formats.size(),
+    };
+}
+
+vk::Image ImagePool::Take(const Key& key) {
+    const auto it = std::ranges::find_if(entries, [&](const Entry& entry) {
+        return entry.key == key && scheduler.IsFree(entry.tick);
+    });
+    if (it == entries.end()) {
+        return {};
+    }
+    vk::Image image = std::move(it->image);
+    bytes -= it->bytes;
+    entries.erase(it);
+    ++reused;
+    return image;
+}
+
+void ImagePool::Give(const Key& key, vk::Image image) {
+    // ponytail: byte cap and age only; a per-shape count cap if one shape crowds out the rest.
+    static constexpr u64 MaxBytes = u64{512} << 20;
+    const u64 image_bytes = image.GetMemoryBlock().size;
+    if (image_bytes == 0 || image_bytes > MaxBytes) {
+        return;
+    }
+    while (bytes + image_bytes > MaxBytes) {
+        bytes -= entries.front().bytes;
+        entries.erase(entries.begin());
+    }
+    bytes += image_bytes;
+    entries.push_back({key, std::move(image), image_bytes, scheduler.CurrentTick(), 0});
+}
+
+void ImagePool::TickFrame(u32 failed_images) {
+    // Unused this long: the scene no longer makes this shape.
+    static constexpr u32 MaxUnusedFrames = 120;
+    if (failed_images != seen_failed_images) {
+        // Out of memory: the pool's images are the cheapest memory to give back.
+        seen_failed_images = failed_images;
+        entries.clear();
+        bytes = 0;
+        return;
+    }
+    std::erase_if(entries, [this](Entry& entry) {
+        if (++entry.unused_frames <= MaxUnusedFrames) {
+            return false;
+        }
+        bytes -= entry.bytes;
+        return true;
+    });
 }
 
 void Image::AllocateComputeUnswizzleBuffer(u32 max_slices) {
@@ -4234,7 +4316,8 @@ bool Image::ScaleUp(bool ignore) {
         scaled_info.size.width = scaled_width;
         scaled_info.size.height = scaled_height;
         scaled_image = MakeImage(runtime->device, runtime->memory_allocator, scaled_info,
-                                 runtime->ViewFormats(info.format));
+                                 runtime->ViewFormats(info.format), {}, false, false, false,
+                                 &runtime->image_pool, &scaled_pool_key);
         ignore = false;
     }
     current_image = &Image::scaled_image;

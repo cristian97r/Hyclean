@@ -797,6 +797,10 @@ void TextureCache<P>::TickFrame() {
                  images_created, images_deleted, gc_deletes + gc_costly_deletes, gc_costly_deletes,
                  gc_download_deletes,
                  async_decodes_queued, astc_opaque_images, astc_alpha_images);
+        if constexpr (requires { runtime.image_pool.TakeReused(); }) {
+            LOG_INFO(HW_GPU, "Texture cache last 600 frames: reused {} host images, pool {} MiB",
+                     runtime.image_pool.TakeReused(), runtime.image_pool.Bytes() >> 20);
+        }
         LOG_INFO(HW_GPU, "Texture cache last 600 frames: {} uploads from guest memory, {} MiB (largest {} MiB, {} by layer)",
                  images_uploaded, uploaded_bytes >> 20, largest_upload >> 20, layer_uploads);
         LOG_INFO(HW_GPU,
