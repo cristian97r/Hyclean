@@ -94,6 +94,9 @@ the original step as a floor, caps long frames, and smooths changes. Actual
 gameplay speed and the runtime value of that frame-rate field still require
 live validation.
 
+The water ripple effect runs fast above 60 fps because the game advances it once
+per rendered frame; cap the frame rate at 60 to avoid it.
+
 In Lichii, `CoreTiming::GetClockTicks` scales the counter for CPU Boost and
 Overclock, while Dynarmic's advertised counter frequency stays unchanged.
 Boost uses a 1.7 multiplier and Overclock uses 2. Enabling core-speed
