@@ -9,7 +9,7 @@ on:
         default: true
   push:
     branches:
-      - nx2-experimental
+      - next
     # A binary only changes when build inputs change; docs-only pushes skip the build.
     paths:
       - "src/**"
@@ -97,13 +97,6 @@ jobs:
             runner: windows-2022
             pgo: true
             profile: lichii-windows.profdata
-          - platform: linux-aarch64
-            runner: ubuntu-24.04-arm
-          - platform: linux-aarch64-pgo
-            runner: ubuntu-24.04-arm
-            pgo: true
-          - platform: macos-arm64
-            runner: macos-15
 
     steps:
       - name: Check out source
@@ -289,6 +282,7 @@ jobs:
             -DENABLE_UPDATE_CHECKER=ON
             -DLICHII_BUILD_TAG=build-${{ github.run_number }}
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }}
+            -DLICHII_UPDATE_REPO=${{ github.repository }}
             -DUSE_DISCORD_PRESENCE=OFF
             -DUSE_CCACHE=ON
           )
@@ -333,6 +327,7 @@ jobs:
             -DENABLE_UPDATE_CHECKER=ON \
             -DLICHII_BUILD_TAG=build-${{ github.run_number }} \
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }} \
+            -DLICHII_UPDATE_REPO=${{ github.repository }} \
             -DUSE_DISCORD_PRESENCE=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
@@ -366,6 +361,7 @@ jobs:
             -DENABLE_UPDATE_CHECKER=ON \
             -DLICHII_BUILD_TAG=build-${{ github.run_number }} \
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }} \
+            -DLICHII_UPDATE_REPO=${{ github.repository }} \
             -DUSE_DISCORD_PRESENCE=OFF \
             -DUSE_CCACHE=ON
 
@@ -635,7 +631,7 @@ jobs:
           retention-days: 7
 
   # Publishes every binary as a GitHub pre-release once every platform built: on pushes to
-  # nx2-experimental, and on manual runs unless "Publish the binaries as a GitHub release" is
+  # next, and on manual runs unless "Publish the binaries as a GitHub release" is
   # unticked.
   release:
     name: Publish release
