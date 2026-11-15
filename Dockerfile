@@ -177,3 +177,19 @@ RUN BUILD_TAG="${BUILD_TAG}" BUILD_PLATFORM="${BUILD_PLATFORM}" package-linux.sh
 FROM debian:${DEBIAN_VERSION} AS linux-artifacts
 COPY --from=linux-package /artifacts /artifacts
 CMD ["cp", "-a", "/artifacts/.", "/out/"]
+
+# Unit tests: the Catch2 binary, run by the linux-tests service (TESTS filters the cases).
+FROM linux-base AS linux-tests
+ARG BUILD_TYPE=Release
+ARG BUILD_JOBS=24
+ARG BUILD_NICE=0
+ENV CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} BUILD_NICE=${BUILD_NICE} BUILD_TYPE=${BUILD_TYPE} \
+    LICHII_TESTS=ON LICHII_CMD=OFF
+WORKDIR /src
+COPY . .
+RUN --mount=type=cache,target=/src/.cache/cpm \
+    --mount=type=cache,target=/src/.ccache \
+    build-linux.sh \
+    && cp /src/build-tests/bin/tests /usr/local/bin/lichii-tests \
+    && rm -rf /src/build-tests
+CMD ["sh", "-c", "lichii-tests ${TESTS:-}"]

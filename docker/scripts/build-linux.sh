@@ -14,15 +14,20 @@ ENABLE_UPDATE_CHECKER=${ENABLE_UPDATE_CHECKER:-OFF}
 ENABLE_WEB_SERVICE=${ENABLE_WEB_SERVICE:-OFF}
 ENABLE_QT_TRANSLATION=${ENABLE_QT_TRANSLATION:-OFF}
 LICHII_CMD=${LICHII_CMD:-ON}
+LICHII_TESTS=${LICHII_TESTS:-OFF}
 JOBS=${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}
+BUILD_DIR=/src/build
+if [ "${LICHII_TESTS}" = ON ]; then
+    BUILD_DIR=/src/build-tests
+fi
 
-cmake -S /src -B /src/build -G Ninja \
+cmake -S /src -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
     -DCMAKE_C_COMPILER="${CC:-gcc}" \
     -DCMAKE_CXX_COMPILER="${CXX:-g++}" \
     -DENABLE_WERROR="${ENABLE_WERROR}" \
-    -DBUILD_TESTING=OFF \
-    -DLICHII_TESTS=OFF \
+    -DBUILD_TESTING="${LICHII_TESTS}" \
+    -DLICHII_TESTS="${LICHII_TESTS}" \
     -DENABLE_QT=ON \
     -DENABLE_QT_TRANSLATION="${ENABLE_QT_TRANSLATION}" \
     -DLICHII_CMD="${LICHII_CMD}" \
@@ -48,4 +53,7 @@ set -- lichii
 if [ "${LICHII_CMD}" = ON ]; then
     set -- "$@" lichii-cmd
 fi
-nice -n "${BUILD_NICE:-0}" cmake --build /src/build --target "$@" --parallel "${JOBS}"
+if [ "${LICHII_TESTS}" = ON ]; then
+    set -- tests
+fi
+nice -n "${BUILD_NICE:-0}" cmake --build "${BUILD_DIR}" --target "$@" --parallel "${JOBS}"

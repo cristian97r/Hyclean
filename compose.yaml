@@ -47,6 +47,16 @@ services:
     volumes:
       - ./builds:/out
 
+  # Unit tests: docker compose run --build --rm linux-tests  (TESTS='"HostMemory:*"' filters)
+  linux-tests:
+    platform: linux/amd64
+    build:
+      <<: *build
+      target: linux-tests
+    image: lichii-build:linux-tests
+    environment:
+      TESTS: ${TESTS:-}
+
   linux-arm64:
     platform: linux/arm64
     build:
