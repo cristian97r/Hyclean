@@ -36,11 +36,15 @@ set(GIT_DESC ${BUILD_VERSION})
 
 # Generate cpp with Git revision from template
 
-set(BUILD_AUTO_UPDATE_STABLE_REPO "zortos293/Lichii")
+# The GitHub repo whose build-N releases the update checker offers (CI passes its own repo).
+if (NOT LICHII_UPDATE_REPO)
+    set(LICHII_UPDATE_REPO "zortos293/Lichii")
+endif()
+set(BUILD_AUTO_UPDATE_STABLE_REPO "${LICHII_UPDATE_REPO}")
 set(BUILD_AUTO_UPDATE_STABLE_API "api.github.com")
-set(BUILD_AUTO_UPDATE_API_PATH "/repos/zortos293/Lichii/releases?per_page=100")
+set(BUILD_AUTO_UPDATE_API_PATH "/repos/${LICHII_UPDATE_REPO}/releases?per_page=100")
 set(BUILD_AUTO_UPDATE_WEBSITE "https://github.com")
-set(BUILD_AUTO_UPDATE_REPO "zortos293/Lichii")
+set(BUILD_AUTO_UPDATE_REPO "${LICHII_UPDATE_REPO}")
 if (NIGHTLY_BUILD)
     set(REPO_NAME "Lichii Nightly")
 else()
