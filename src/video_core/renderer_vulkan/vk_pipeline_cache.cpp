@@ -26,6 +26,9 @@
 #include <thread>
 #include <unordered_set>
 #include <vector>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 #include "common/cityhash.h"
 #include "common/fs/file_lock.h"
 #include "common/settings.h"
@@ -2440,6 +2443,21 @@ void PipelineCache::TickFrame() {
                      outcome->built, outcome->failed, outcome->taken_unfinished,
                      outcome->unclaimed);
             prebuild_load_begin.reset();
+#ifdef __GLIBC__
+            // The boot load and prebuild free GBs of translation data that glibc keeps in its
+            // arenas; hand the free pages back. Off the GPU thread: a trim walks every arena.
+            // ponytail: one trim per boot; later area loads keep their slack until a periodic
+            // trim exists.
+            std::thread([] {
+                const auto start = std::chrono::steady_clock::now();
+                const int released = malloc_trim(0);
+                LOG_INFO(Render_Vulkan, "malloc_trim after the prebuild: released={} in {} ms",
+                         released,
+                         std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count());
+            }).detach();
+#endif
         }
     }
 }
