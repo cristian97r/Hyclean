@@ -1327,6 +1327,34 @@ void HostMemory::ForgetContents() {
     }
 }
 
+std::vector<u8> HostMemory::DirtyGranules() const {
+    std::vector<u8> out(granules ? num_granules : 0);
+    for (size_t index = 0; index < out.size(); ++index) {
+        out[index] = (granules[index].load(std::memory_order_relaxed) & GranuleDirty) != 0;
+    }
+    return out;
+}
+
+std::vector<u8> HostMemory::BackingResidency() const {
+#if defined(__linux__)
+    if (backing_base == nullptr || backing_size == 0) {
+        return {};
+    }
+    const size_t host_page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    std::vector<unsigned char> pages(Common::DivCeil(backing_size, host_page));
+    if (mincore(backing_base, backing_size, pages.data()) != 0) {
+        return {};
+    }
+    std::vector<u8> out(backing_size / PageAlignment);
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = pages[i * PageAlignment / host_page] & 1;
+    }
+    return out;
+#else
+    return {};
+#endif
+}
+
 void HostMemory::EnableDirectMappedAddress() {
 #if !(defined(__OPENORBIS__) || defined(__managarm__))
     if (impl) {

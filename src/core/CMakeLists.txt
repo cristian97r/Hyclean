@@ -362,6 +362,8 @@ add_library(core STATIC
     hle/kernel/message_buffer.h
     hle/kernel/nx2_address_wait_trace.cpp
     hle/kernel/nx2_address_wait_trace.h
+    hle/kernel/nx2_guest_memory.cpp
+    hle/kernel/nx2_guest_memory.h
     hle/kernel/nx2_thread_stats.cpp
     hle/kernel/nx2_thread_stats.h
     hle/kernel/physical_core.cpp

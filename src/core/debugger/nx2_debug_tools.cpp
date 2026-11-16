@@ -30,6 +30,7 @@
 #include "core/debugger/nx2_debug_tools.h"
 #include "core/frontend/framebuffer_layout.h"
 #include "core/hle/kernel/k_process.h"
+#include "core/hle/kernel/nx2_guest_memory.h"
 #include "core/memory.h"
 #include "hid_core/hid_core.h"
 #include "video_core/gpu.h"
@@ -180,6 +181,10 @@ void AppendPng(void* context, void* data, int size) {
     auto& png = *static_cast<std::vector<u8>*>(context);
     const u8* const bytes = static_cast<const u8*>(data);
     png.insert(png.end(), bytes, bytes + size);
+}
+
+json GuestMemoryReport(ToolState& state, const json&) {
+    return Kernel::Nx2GuestMemory::Json(Kernel::Nx2GuestMemory::Collect(state.system));
 }
 
 json Status(ToolState& state, const json& params) {
@@ -784,6 +789,7 @@ Handlers MakeHandlers(const std::shared_ptr<ToolState>& state) {
     };
     return {
         {"status", handler(Status)},
+        {"guest_memory", handler(GuestMemoryReport)},
         {"frame_times", handler(FrameTimes)},
         {"screenshot", handler(Screenshot)},
         {"log_tail", handler(LogTail)},

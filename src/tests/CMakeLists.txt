@@ -28,6 +28,7 @@ add_executable(tests
     core/general_channel.cpp
     core/kernel_finish_termination.cpp
     core/nx2_thread_stats.cpp
+    core/nx2_guest_memory.cpp
     core/nx2_debug_server.cpp
     core/nx2_zip.cpp
     core/nx2_present_pacer.cpp

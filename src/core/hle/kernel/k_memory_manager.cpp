@@ -258,6 +258,22 @@ void KMemoryManager::MarkDirty(KPhysicalAddress address, size_t num_pages) {
                                              num_pages * PageSize);
 }
 
+std::vector<KMemoryManager::HeapInfo> KMemoryManager::GetHeapInfo() {
+    std::vector<HeapInfo> out;
+    for (size_t i = 0; i < m_num_managers; ++i) {
+        // No pool lock: it needs a kernel thread, and counts read while pages change hands only
+        // put those pages on one side or the other.
+        const Impl& manager = m_managers[i];
+        HeapInfo& info = out.emplace_back(
+            HeapInfo{manager.GetPool(), manager.GetAddress(), manager.GetSize(), {}});
+        info.free_pages.resize(info.size / PageSize);
+        for (size_t page = 0; page < info.free_pages.size(); ++page) {
+            info.free_pages[page] = manager.GetPageReferenceCount(page) == 0;
+        }
+    }
+    return out;
+}
+
 Result KMemoryManager::AllocatePageGroupImpl(KPageGroup* out, size_t num_pages, Pool pool,
                                              Direction dir, bool unoptimized, bool random) {
     // Choose a heap based on our page size request.

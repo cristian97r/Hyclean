@@ -51,6 +51,7 @@
 #include "core/hle/kernel/k_scheduler.h"
 #include "core/hle/kernel/k_system_control.h"
 #include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/nx2_guest_memory.h"
 #include "core/hle/kernel/nx2_thread_stats.h"
 #include "core/hle/kernel/physical_core.h"
 #include "core/hle/service/acc/profile_manager.h"
@@ -616,6 +617,7 @@ struct System::Impl {
         }
         VideoCore::Nx2Debug::BeginSession();
         debug_service = Nx2Debug::MaybeStartService(system, name, params.program_id);
+        guest_memory_trace = Kernel::Nx2GuestMemory::MaybeStartTrace(system);
         Nx2Sampler::StartFromEnvironment();
         return SystemResultStatus::Success;
     }
@@ -623,6 +625,7 @@ struct System::Impl {
     void ShutdownMainProcess() {
         VideoCore::Nx2Debug::EndSession();
         debug_service.reset();
+        guest_memory_trace = {};
         SetShuttingDown(true);
         Common::ADPF::Shutdown();
 
@@ -789,6 +792,8 @@ struct System::Impl {
     bool exit_locked : 1 = false;
     bool exit_requested : 1 = false;
     bool nvdec_active : 1 = false;
+    /// EDEN_NX2_GUEST_MEMORY_TRACE's report thread.
+    std::jthread guest_memory_trace;
     /// EDEN_NX2_DEBUG_SERVER; the last member, so it stops before anything it reads goes away.
     std::unique_ptr<Nx2Debug::Service> debug_service;
 

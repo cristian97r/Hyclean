@@ -7,6 +7,7 @@
 
 #include <array>
 #include <tuple>
+#include <vector>
 
 #include "common/common_funcs.h"
 #include "core/hle/kernel/k_light_lock.h"
@@ -156,6 +157,15 @@ public:
         return total;
     }
 
+    /// One heap of a pool, for EDEN_NX2_GUEST_MEMORY_TRACE.
+    struct HeapInfo {
+        Pool pool;
+        KPhysicalAddress address;
+        size_t size;
+        std::vector<u8> free_pages; ///< One per page, 1 where nothing holds it
+    };
+    std::vector<HeapInfo> GetHeapInfo();
+
     void DumpFreeList(Pool pool) {
         KScopedLightLock lk(m_pool_locks[static_cast<size_t>(pool)]);
 
@@ -235,6 +245,12 @@ private:
         }
         constexpr size_t GetSize() const {
             return m_heap.GetSize();
+        }
+        constexpr KPhysicalAddress GetAddress() const {
+            return m_heap.GetAddress();
+        }
+        u16 GetPageReferenceCount(size_t index) const {
+            return m_page_reference_counts[index];
         }
         constexpr KPhysicalAddress GetEndAddress() const {
             return m_heap.GetEndAddress();

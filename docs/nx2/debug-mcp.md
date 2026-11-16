@@ -222,6 +222,12 @@ not list it.
 (`EDEN_NX2_HOSTTIMING_STATS`) on or off and returns the `previous` and current `stats` state.
 Read the lines with `log_tail` (`contains: "HostTiming wait"`).
 
+**`guest_memory`**. The `EDEN_NX2_GUEST_MEMORY_TRACE` report taken now, as JSON: the guest RAM
+backing's size and resident bytes, each kernel pool heap (bounds, used and free bytes, how much of
+each is resident, free bytes that may still hold data), each process's mapped and resident bytes by
+memory state, and nx2:gpu's GPU-only backings, plus the report's log `lines`. Residency is mincore on
+the backing (Linux), which faults nothing in.
+
 **`capture_bundle`** `{description?, size_limit_mib?, timeout_s?}` (`index?` in the adapter). It
 writes the bug-report bundle that Help → Report a Bug writes ([bug-bundle.md](bug-bundle.md)):
 logs, system and settings, screenshot, the last 10 s of frame times, and the next frame captured

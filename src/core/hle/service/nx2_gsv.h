@@ -52,6 +52,7 @@
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/nx2_address_wait_trace.h"
+#include "core/hle/kernel/nx2_guest_memory.h"
 #include "core/hle/kernel/nx2_thread_stats.h"
 #include "core/hle/kernel/k_system_resource.h"
 #include "core/hle/kernel/k_memory_manager.h"
@@ -1028,6 +1029,8 @@ private:
                                            backing.reserved};
         m_gpu_only_bytes += backing.size;
         m_gpu_only_peak = (std::max)(m_gpu_only_peak, m_gpu_only_bytes);
+        Kernel::Nx2GuestMemory::g_gpu_only_bytes.store(m_gpu_only_bytes, std::memory_order_relaxed);
+        Kernel::Nx2GuestMemory::g_gpu_only_peak.store(m_gpu_only_peak, std::memory_order_relaxed);
     }
 
     // Runs before a GPU-side write that may land in a sparse region (Tegra::Nx2BackSparseWrite,
@@ -1669,6 +1672,7 @@ private:
         }
         std::scoped_lock lk{m_region_mutex};
         m_gpu_only_bytes -= freed;
+        Kernel::Nx2GuestMemory::g_gpu_only_bytes.store(m_gpu_only_bytes, std::memory_order_relaxed);
         // Memory came back: a fill that found none can try again.
         m_reserve_exhausted = false;
         m_reserve_cv.notify_all();

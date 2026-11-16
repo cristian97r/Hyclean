@@ -347,3 +347,21 @@ TEST_CASE("HostMemory: Protect within a view, across views and over a gap", "[co
     REQUIRE(mem.BackingBasePointer()[0x200000] == 7);
 }
 #endif
+
+#ifdef __linux__
+TEST_CASE("HostMemory: Backing residency and dirty granules", "[common]") {
+    HostMemory mem(BACKING_SIZE, VIRTUAL_SIZE);
+    const auto before = mem.BackingResidency();
+    REQUIRE(before.size() == BACKING_SIZE / 0x1000);
+    REQUIRE(before[0x10000 / 0x1000] == 0);
+
+    mem.BackingBasePointer()[0x10000] = 1;
+    REQUIRE(mem.BackingResidency()[0x10000 / 0x1000] != 0);
+
+    mem.MarkDirty(0x20000, 0x1000);
+    const auto dirty = mem.DirtyGranules();
+    REQUIRE(dirty.size() == BACKING_SIZE >> HostMemory::GranuleShift);
+    REQUIRE(dirty[2] != 0);
+    REQUIRE(dirty[1] == 0);
+}
+#endif

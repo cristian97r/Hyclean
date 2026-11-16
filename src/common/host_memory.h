@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 
@@ -81,6 +82,16 @@ public:
     /// A new kernel on this memory: everything a previous one used may hold data.
     void ForgetContents();
 
+    static constexpr size_t GranuleShift = 16; ///< 64 KiB of backing per state byte
+
+    /// One byte per granule, non-zero where it may hold data (handed back unclear or never
+    /// cleared since).
+    [[nodiscard]] std::vector<u8> DirtyGranules() const;
+
+    /// One byte per 4 KiB of backing, non-zero where it is in RAM (mincore: no page is touched).
+    /// Empty where the host has no such query.
+    [[nodiscard]] std::vector<u8> BackingResidency() const;
+
     [[nodiscard]] u8* BackingBasePointer() noexcept {
         return backing_base;
     }
@@ -133,7 +144,6 @@ private:
     u8* virtual_base{};
     size_t virtual_base_offset{};
 
-    static constexpr size_t GranuleShift = 16; ///< 64 KiB of backing per state byte
     static constexpr u8 GranuleUsed = 1 << 0;   ///< Handed out at least once
     static constexpr u8 GranuleDirty = 1 << 1;  ///< May hold non-zero data
     std::unique_ptr<std::atomic<u8>[]> granules;
