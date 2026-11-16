@@ -518,6 +518,9 @@ struct DeferredStages {
     /// Translations to add to the stage cache once emitted, by program index
     std::array<std::shared_ptr<VideoCommon::StageCache::Translation>, Maxwell::MaxShaderProgram>
         recorded;
+    /// SPIR-V of the leading stages taken from the stage cache, and the bindings after them
+    std::array<std::vector<u32>, Maxwell::MaxShaderStage> spirv;
+    Shader::Backend::Bindings binding;
 };
 
 size_t GetTotalPipelineWorkers() {
@@ -3168,8 +3171,17 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     }
     u64 deferred_ir_bytes = 0;
     std::unique_ptr<QueuedIrBudget::Reservation> ir_reservation;
-    // Reused stages have no IR: their pipeline emits on this thread (only the stages not reused).
-    if (emit_pools && std::ranges::none_of(reused, [](const auto& stage) { return !!stage; })) {
+    // Reused stages have no IR, so they are done here. Emission of the stages after them can still
+    // be deferred when the reused ones come first: then the bindings they leave are known here.
+    bool reused_first{true};
+    for (size_t index = 0, translated_before = 0; index < Maxwell::MaxShaderProgram; ++index) {
+        if (key.unique_hashes[index] == 0) {
+            continue;
+        }
+        reused_first = reused_first && !(reused[index] && translated_before);
+        translated_before += reused[index] ? 0 : 1;
+    }
+    if (emit_pools && reused_first) {
         deferred_ir_bytes = IrBytes(programs);
         ir_reservation = queued_ir.TryReserve(deferred_ir_bytes);
     }
@@ -3270,7 +3282,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                            static_cast<std::streamsize>(code.size() * sizeof(u32)));
             }
         }
-        if (defer_emission) {
+        if (defer_emission && !cached) {
             deferred_runtime_infos[stage_index] = runtime_info;
             if (VideoCommon::Nx2Perf::Verify()) {
                 reference_spirv[stage_index] = EmitSPIRV(profile, runtime_info, program, binding);
@@ -3317,6 +3329,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         job->runtime_infos = std::move(deferred_runtime_infos);
         job->reference_spirv = std::move(reference_spirv);
         job->recorded = std::move(recorded);
+        job->spirv = std::move(stage_spirv);
+        job->binding = binding;
         for (size_t stage = 0; stage < infos.size(); ++stage) {
             if (infos[stage]) {
                 infos[stage] = &job->programs[stage + 1].info;
@@ -3324,8 +3338,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         }
         emit_stages = [this, job = std::move(job), hashes = key.unique_hashes]() mutable {
             const auto begin = std::chrono::steady_clock::now();
-            std::array<std::vector<u32>, Maxwell::MaxShaderStage> spirv;
-            Shader::Backend::Bindings stage_binding;
+            std::array<std::vector<u32>, Maxwell::MaxShaderStage> spirv{std::move(job->spirv)};
+            Shader::Backend::Bindings stage_binding{job->binding};
             for (size_t stage = 0; stage < spirv.size(); ++stage) {
                 if (job->runtime_infos[stage]) {
                     auto& recorded_stage{job->recorded[stage + 1]};
