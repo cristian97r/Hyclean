@@ -515,6 +515,9 @@ struct DeferredStages {
     std::array<Shader::IR::Program, Maxwell::MaxShaderProgram> programs;
     std::array<std::optional<Shader::RuntimeInfo>, Maxwell::MaxShaderStage> runtime_infos;
     std::array<std::vector<u32>, Maxwell::MaxShaderStage> reference_spirv;
+    /// Translations to add to the stage cache once emitted, by program index
+    std::array<std::shared_ptr<VideoCommon::StageCache::Translation>, Maxwell::MaxShaderProgram>
+        recorded;
 };
 
 size_t GetTotalPipelineWorkers() {
@@ -531,6 +534,20 @@ size_t GetTotalPipelineWorkers() {
 #else
     return max_core_threads;
 #endif
+}
+
+RamTier CurrentRamTier() {
+    switch (Settings::values.ram_usage_mode.GetValue()) {
+    case Settings::RamUsageMode::High:
+        return RamTier::High;
+    case Settings::RamUsageMode::Balanced:
+        return RamTier::Balanced;
+    case Settings::RamUsageMode::Low:
+        return RamTier::Low;
+    case Settings::RamUsageMode::Auto:
+        break;
+    }
+    return AutoRamTier(Common::GetMemInfo().TotalPhysicalMemory);
 }
 
 } // Anonymous namespace
@@ -576,6 +593,18 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     // A sixty-fourth of the RAM (16 GB: 256 MB), about 25 KB per evicted pipeline
     const u64 ram = Common::GetMemInfo().TotalPhysicalMemory;
     kept_stages = decltype(kept_stages){ram != 0 ? ram / 64 : u64{256} << 20};
+    // ponytail: guesses until measured (gate: Low grows PSS < 50 MiB at Market fountain).
+    switch (CurrentRamTier()) {
+    case RamTier::High:
+        stage_cache.SetMaxBytes(size_t{256} << 20);
+        break;
+    case RamTier::Balanced:
+        stage_cache.SetMaxBytes(size_t{128} << 20);
+        break;
+    case RamTier::Low:
+        stage_cache.SetMaxBytes(size_t{32} << 20);
+        break;
+    }
     if (Settings::values.use_vulkan_driver_pipeline_cache.GetValue() && !use_vulkan_pipeline_cache) {
         LOG_INFO(Render_Vulkan, "Driver keeps its own pipeline cache, not saving a Vulkan one");
     }
@@ -934,20 +963,7 @@ size_t KeptPipelines() {
     static const size_t kept = [] {
         const u64 total = Common::GetMemInfo().TotalPhysicalMemory;
         const Settings::RamUsageMode mode = Settings::values.ram_usage_mode.GetValue();
-        const RamTier tier = [&] {
-            switch (mode) {
-            case Settings::RamUsageMode::High:
-                return RamTier::High;
-            case Settings::RamUsageMode::Balanced:
-                return RamTier::Balanced;
-            case Settings::RamUsageMode::Low:
-                return RamTier::Low;
-            case Settings::RamUsageMode::Auto:
-                break;
-            }
-            return AutoRamTier(total);
-        }();
-        const size_t limit = KeptPipelinesForTier(tier, total);
+        const size_t limit = KeptPipelinesForTier(CurrentRamTier(), total);
         LOG_INFO(Render_Vulkan, "RAM usage mode {}: keeping up to {} built graphics pipelines",
                  Settings::CanonicalizeEnum(mode), limit);
         return limit;
@@ -2727,6 +2743,45 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             ReturnPools(std::move(stage));
         }
     };
+    // Native stages translated before for other pipelines (VideoCommon::StageCache). Merged
+    // VertexA/VertexB pairs and geometry stages (trimmed and pruned against the other stages) are
+    // always translated.
+    using VideoCommon::StageCache;
+    std::array<std::shared_ptr<const StageCache::Translation>, Maxwell::MaxShaderProgram> reused{};
+    std::array<std::shared_ptr<StageCache::Translation>, Maxwell::MaxShaderProgram> recorded{};
+    std::array<std::optional<StageCache::Recorder>, Maxwell::MaxShaderProgram> recorders;
+    std::array<Shader::Environment*, Maxwell::MaxShaderProgram> stage_envs{};
+    for (size_t index = 0, stage_env = 0; index < Maxwell::MaxShaderProgram; ++index) {
+        if (key.unique_hashes[index] == 0) {
+            continue;
+        }
+        Shader::Environment& env{*envs[stage_env++]};
+        stage_envs[index] = &env;
+        if (!stage_cache.Enabled() || key.unique_hashes[0] != 0 || !env.IsNativeProgram() ||
+            index == static_cast<size_t>(Maxwell::ShaderType::Geometry)) {
+            continue;
+        }
+        std::vector<u8> signature = StageCache::Signature(env, key.unique_hashes[index], index);
+        reused[index] = stage_cache.Find(signature, env);
+        // A layer emulation source is needed with its IR (GenerateGeometryPassthrough).
+        if (reused[index] && reused[index]->program.info.requires_layer_emulation) {
+            reused[index] = nullptr;
+        }
+        if (!reused[index]) {
+            recorders[index].emplace(env);
+            recorded[index] = std::make_shared<StageCache::Translation>();
+            recorded[index]->signature = std::move(signature);
+        }
+    }
+    const auto translation_env = [&](size_t index) -> Shader::Environment& {
+        return recorders[index] ? *recorders[index] : *stage_envs[index];
+    };
+    const auto retranslate = [&](size_t index) {
+        Shader::Environment& env{*stage_envs[index]};
+        const u32 cfg_offset{static_cast<u32>(env.StartAddress() + sizeof(Shader::ProgramHeader))};
+        Shader::Maxwell::Flow::CFG cfg(env, pools.flow_block, cfg_offset, index == 0);
+        return TranslateProgram(pools.inst, pools.block, env, cfg, host_info);
+    };
     std::vector<VideoCommon::StageTranslation> translations;
     std::array<VideoCommon::StageTranslation*, Maxwell::MaxShaderProgram> translated{};
     if (parallel) {
@@ -2741,8 +2796,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                 !device.IsGeometryShaderSupported() && env.IsNativeProgram()) {
                 continue; // The pipeline is skipped below before this stage is needed
             }
+            if (reused[index]) {
+                continue;
+            }
             translations.push_back({
-                .env = &env,
+                .env = &translation_env(index),
                 .pools = stage_pools.emplace_back(TakeSparePools()).get(),
                 .cfg_offset = static_cast<u32>(env.StartAddress() + sizeof(Shader::ProgramHeader)),
                 .exits_to_dispatcher = index == 0,
@@ -2811,14 +2869,29 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             if (translated[index]) {
                 return translated[index]->Take();
             }
+            Shader::Environment& source{translation_env(index)};
             const u32 cfg_offset{
-                static_cast<u32>(env.StartAddress() + sizeof(Shader::ProgramHeader))};
-            Shader::Maxwell::Flow::CFG cfg(env, pools.flow_block, cfg_offset, index == 0);
-            return TranslateProgram(pools.inst, pools.block, env, cfg, host_info);
+                static_cast<u32>(source.StartAddress() + sizeof(Shader::ProgramHeader))};
+            Shader::Maxwell::Flow::CFG cfg(source, pools.flow_block, cfg_offset, index == 0);
+            return TranslateProgram(pools.inst, pools.block, source, cfg, host_info);
         };
-        if (!uses_vertex_a || index != 1) {
+        if (reused[index]) {
+            programs[index] = reused[index]->program;
+        } else if (!uses_vertex_a || index != 1) {
             // Normal path
             programs[index] = translate();
+            if (recorded[index]) {
+                // Texture arrays may be cut to the pipeline's limits below, which needs the IR.
+                const auto& textures{programs[index].info.texture_descriptors};
+                if (std::ranges::any_of(textures, [](const auto& desc) {
+                        return desc.count > 1 || desc.is_descriptor_array;
+                    })) {
+                    recorded[index] = nullptr;
+                } else {
+                    recorded[index]->reads = recorders[index]->TakeReads();
+                    recorded[index]->program = StageCache::Summary(programs[index]);
+                }
+            }
         } else {
             // VertexB path when VertexA is present.
             auto& program_va{programs[0]};
@@ -3095,7 +3168,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     }
     u64 deferred_ir_bytes = 0;
     std::unique_ptr<QueuedIrBudget::Reservation> ir_reservation;
-    if (emit_pools) {
+    // Reused stages have no IR: their pipeline emits on this thread (only the stages not reused).
+    if (emit_pools && std::ranges::none_of(reused, [](const auto& stage) { return !!stage; })) {
         deferred_ir_bytes = IrBytes(programs);
         ir_reservation = queued_ir.TryReserve(deferred_ir_bytes);
     }
@@ -3104,6 +3178,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     std::array<std::vector<u32>, Maxwell::MaxShaderStage> stage_spirv;
     std::array<std::optional<Shader::RuntimeInfo>, Maxwell::MaxShaderStage> deferred_runtime_infos;
     std::array<std::vector<u32>, Maxwell::MaxShaderStage> reference_spirv;
+    std::array<std::shared_ptr<const StageCache::Emitted>, Maxwell::MaxShaderProgram> new_emitted;
 
     const Shader::IR::Program* previous_stage{};
     Shader::Backend::Bindings binding;
@@ -3157,6 +3232,26 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             runtime_info.per_primitive_flat = true;
             runtime_info.primitive_id_location = mesh_emulation->primitive_id_location;
         }
+        const StageCache::Translation* const cached{reused[index].get()};
+        std::vector<u8> runtime_key;
+        std::shared_ptr<const StageCache::Emitted> emitted;
+        if (cached || recorded[index]) {
+            runtime_key = StageCache::RuntimeKey(runtime_info, binding);
+        }
+        if (cached) {
+            emitted = stage_cache.FindEmitted(*cached, runtime_key);
+            if (emitted && !stage_cache.Verify()) {
+                program = emitted->program;
+                stage_spirv[stage_index] = emitted->Spirv();
+                device.SaveShader(stage_spirv[stage_index]);
+                binding = emitted->bindings_out;
+                stage_cache.CountReuse(true);
+                previous_stage = &program;
+                continue;
+            }
+            // Emitted for other runtime info only, or verifying: the IR is needed again.
+            program = retranslate(index);
+        }
         ConvertLegacyToGeneric(program, runtime_info);
         if (index == static_cast<size_t>(Maxwell::ShaderType::Geometry)) {
             PruneUnreadGeometryOutputs(
@@ -3188,8 +3283,28 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             if (build_in_parallel) {
                 AddRuntimeSpirvTime(0, begin);
             }
+            if (emitted) {
+                if (stage_spirv[stage_index] != emitted->Spirv() ||
+                    std::memcmp(&binding, &emitted->bindings_out, sizeof(binding)) != 0) {
+                    stage_cache.CountVerifyMismatch(key.unique_hashes[index]);
+                }
+                stage_cache.CountReuse(true);
+            } else if (cached) {
+                stage_cache.AddEmitted(*cached, StageCache::MakeEmitted(std::move(runtime_key),
+                                                                        stage_spirv[stage_index],
+                                                                        program, binding));
+                stage_cache.CountReuse(false);
+            } else if (recorded[index]) {
+                new_emitted[index] = StageCache::MakeEmitted(
+                    std::move(runtime_key), stage_spirv[stage_index], program, binding);
+            }
         }
         previous_stage = &program;
+    }
+    for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
+        if (new_emitted[index]) {
+            stage_cache.Insert(std::move(recorded[index]), std::move(new_emitted[index]));
+        }
     }
     std::function<std::array<std::vector<u32>, Maxwell::MaxShaderStage>()> emit_stages;
     if (defer_emission) {
@@ -3201,6 +3316,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         job->programs = std::move(programs);
         job->runtime_infos = std::move(deferred_runtime_infos);
         job->reference_spirv = std::move(reference_spirv);
+        job->recorded = std::move(recorded);
         for (size_t stage = 0; stage < infos.size(); ++stage) {
             if (infos[stage]) {
                 infos[stage] = &job->programs[stage + 1].info;
@@ -3212,10 +3328,22 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             Shader::Backend::Bindings stage_binding;
             for (size_t stage = 0; stage < spirv.size(); ++stage) {
                 if (job->runtime_infos[stage]) {
+                    auto& recorded_stage{job->recorded[stage + 1]};
+                    std::vector<u8> runtime_key;
+                    if (recorded_stage) {
+                        runtime_key = VideoCommon::StageCache::RuntimeKey(
+                            *job->runtime_infos[stage], stage_binding);
+                    }
                     spirv[stage] =
                         EmitStageSpirv(device, profile, *job->runtime_infos[stage],
                                        job->programs[stage + 1], stage_binding, hashes[stage + 1],
                                        stage, job->reference_spirv[stage]);
+                    if (recorded_stage) {
+                        stage_cache.Insert(std::move(recorded_stage),
+                                           VideoCommon::StageCache::MakeEmitted(
+                                               std::move(runtime_key), spirv[stage],
+                                               job->programs[stage + 1], stage_binding));
+                    }
                 }
             }
             auto completed_pools = std::move(job->pools);
