@@ -2428,6 +2428,12 @@ void PipelineCache::TickFrame() {
     }
     constexpr u64 EvictCheckFrames = 600;
     if (frame_count % EvictCheckFrames == 0) {
+        if (scheduled_prebuild) {
+            // Prebuilt pipelines join the cache unused, where the kept limit covers them too
+            for (auto& [key, pipeline] : scheduled_prebuild->TakeBuilt()) {
+                graphics_cache.try_emplace(key, std::move(pipeline));
+            }
+        }
         if (VideoCommon::StutterTrace::Enabled()) {
             LogPipelineUse();
         }

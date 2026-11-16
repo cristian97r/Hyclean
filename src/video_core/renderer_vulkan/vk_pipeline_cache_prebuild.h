@@ -40,7 +40,7 @@ public:
         size_t built;
         size_t failed;
         size_t taken_unfinished; ///< Taken by a lookup while still queued or building
-        size_t unclaimed;        ///< Built, and no lookup has taken them yet
+        size_t unclaimed;        ///< Built, and no lookup took them first (TakeBuilt moved some)
     };
 
     explicit ScheduledPrebuild(VideoCommon::ShaderJobScheduler& jobs_)
@@ -143,6 +143,22 @@ public:
         return std::move(entry->pipeline);
     }
 
+    /// Moves out every pipeline built so far, for the caller's cache: there the kept limit can
+    /// evict the ones no draw needs, which it can't while they wait here.
+    std::vector<std::pair<Key, std::unique_ptr<Pipeline>>> TakeBuilt() {
+        std::vector<std::pair<Key, std::unique_ptr<Pipeline>>> taken;
+        std::scoped_lock lock{mutex};
+        std::erase_if(entries, [&](auto& entry) {
+            if (!entry.second->pipeline) {
+                return false;
+            }
+            taken.emplace_back(entry.first, std::move(entry.second->pipeline));
+            return true;
+        });
+        handed_over += taken.size();
+        return taken;
+    }
+
     /// Calls `done` once every build added so far was translated, on the thread that translated
     /// the last one, or now when none is left. Never once Stop() returned.
     void AfterTranslations(Common::UniqueFunction<void> done) {
@@ -166,7 +182,7 @@ public:
             .built = built,
             .failed = failed,
             .taken_unfinished = taken_unfinished,
-            .unclaimed = static_cast<size_t>(std::ranges::count_if(
+            .unclaimed = handed_over + static_cast<size_t>(std::ranges::count_if(
                 entries, [](const auto& entry) { return entry.second->pipeline != nullptr; })),
         };
     }
@@ -212,6 +228,7 @@ private:
     size_t built{};
     size_t failed{};
     size_t taken_unfinished{};
+    size_t handed_over{}; ///< Built ones TakeBuilt moved out
     bool stopped{};
     mutable std::mutex mutex;
     std::unordered_map<Key, std::shared_ptr<Entry>> entries;
