@@ -300,6 +300,8 @@ void StageCache::Account(size_t added) {
     if (bytes > max_bytes) {
         // Translations in use elsewhere stay alive through their shared pointers.
         translations.clear();
+        ++clears;
+        cleared_bytes += bytes;
         bytes = 0;
     }
 }
@@ -422,14 +424,19 @@ void StageCache::Log() {
         return;
     }
     size_t kept_bytes{};
+    u64 clear_count{};
+    u64 clear_bytes{};
     {
         std::scoped_lock lock{mutex};
         kept_bytes = bytes;
+        clear_count = clears;
+        clear_bytes = cleared_bytes;
     }
     LOG_INFO(Render_Vulkan,
              "Stage cache: {} stages reused whole, {} translations reused, {} translated, {} MiB "
-             "kept{}",
+             "kept of {} MiB, {} clears ({} MiB dropped){}",
              reused_emitted.load(), reused_translation.load(), translated.load(), kept_bytes >> 20,
+             max_bytes >> 20, clear_count, clear_bytes >> 20,
              verify ? fmt::format(", {} verify mismatches", verify_mismatches.load())
                     : std::string{});
 }

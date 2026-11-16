@@ -158,6 +158,8 @@ private:
     std::unordered_map<u64, std::vector<std::shared_ptr<const Translation>>> translations;
     size_t bytes{};
     size_t max_bytes{size_t{256} << 20};
+    u64 clears{};
+    u64 cleared_bytes{};
 
     std::atomic<u64> reused_emitted{};
     std::atomic<u64> reused_translation{};
