@@ -119,7 +119,7 @@ area and shop music; #716, #1092).
 The sound manager job at `0x415300` (phase in `w2`: phase 0 reads the step and
 updates the sound engine, phase 1 follows) is entered every frame. FPS Unlock
 replaces its first instruction, `pacibsp`, with `b 0x3C46800` (124-byte gate)
-and its step load at `0x415334`, `ldr s0, [x8, #0x10]`, with `bl 0x3C46280`
+and its step load at `0x415334`, `ldr s0, [x8, #0x10]`, with `bl 0x3C46290`
 (16 bytes, returns `max(step, 1.0)`). In phase 0 the gate runs the job as before
 when the step is at least 1.0. Below that it adds the step to an accumulator
 at `0x4E9FEA0` and runs the job only once a whole step has built up, keeping
@@ -129,8 +129,8 @@ whole steps and sound still follows real time; at 60 fps and below nothing
 changes. FPS Unlock's timer state grows to `0xA8` bytes to cover both words.
 Dynamic FPS never lowers the step below 1.0 and does not include the gate.
 
-Both caves are in the executable padding after the text (`0x3C46280` follows
-the FPS routine at `0x3C46200`; `0x3C46800` is past the other caves in use).
+Both caves are in the executable padding after the text (`0x3C46290` follows
+the 144-byte FPS routine at `0x3C46200`; `0x3C46800` is past the other caves in use).
 
 ## FPS Unlock step counters
 
