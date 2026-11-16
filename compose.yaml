@@ -57,6 +57,14 @@ services:
     environment:
       TESTS: ${TESTS:-}
 
+  # Shared JIT code cache test under ThreadSanitizer: docker compose run --build --rm linux-tsan
+  linux-tsan:
+    platform: linux/amd64
+    build:
+      <<: *build
+      target: linux-tsan
+    image: lichii-build:linux-tsan
+
   linux-arm64:
     platform: linux/arm64
     build:

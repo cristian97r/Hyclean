@@ -54,6 +54,6 @@ if [ "${LICHII_CMD}" = ON ]; then
     set -- "$@" lichii-cmd
 fi
 if [ "${LICHII_TESTS}" = ON ]; then
-    set -- tests
+    set -- ${BUILD_TARGETS:-tests}
 fi
 nice -n "${BUILD_NICE:-0}" cmake --build "${BUILD_DIR}" --target "$@" --parallel "${JOBS}"

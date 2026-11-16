@@ -193,3 +193,21 @@ RUN --mount=type=cache,target=/src/.cache/cpm \
     && cp /src/build-tests/bin/tests /usr/local/bin/lichii-tests \
     && rm -rf /src/build-tests
 CMD ["sh", "-c", "lichii-tests ${TESTS:-}"]
+
+# The shared JIT code cache test under ThreadSanitizer, run by the linux-tsan service. Everything
+# it links (common, dynarmic) is instrumented; no other target is built.
+FROM linux-base AS linux-tsan
+ARG BUILD_JOBS=24
+ENV CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} BUILD_TYPE=RelWithDebInfo LICHII_TESTS=ON LICHII_CMD=OFF \
+    BUILD_TARGETS=jit_shared_cache_tests \
+    CFLAGS="-fsanitize=thread -fno-omit-frame-pointer" CXXFLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
+    LDFLAGS=-fsanitize=thread
+WORKDIR /src
+COPY . .
+RUN --mount=type=cache,target=/src/.cache/cpm \
+    --mount=type=cache,target=/src/.ccache \
+    build-linux.sh \
+    && cp /src/build-tests/bin/jit_shared_cache_tests /usr/local/bin/ \
+    && rm -rf /src/build-tests
+ENV TSAN_OPTIONS=suppressions=/src/src/tests/core/jit_shared_cache.tsan.supp
+CMD ["jit_shared_cache_tests"]
