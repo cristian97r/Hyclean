@@ -2428,6 +2428,9 @@ void PipelineCache::TickFrame() {
     }
     constexpr u64 EvictCheckFrames = 600;
     if (frame_count % EvictCheckFrames == 0) {
+        if (VideoCommon::StutterTrace::Enabled()) {
+            LogPipelineUse();
+        }
         EvictUnusedPipelines();
     }
     constexpr u64 PrebuildCheckFrames = 60;
@@ -2460,6 +2463,30 @@ void PipelineCache::TickFrame() {
 #endif
         }
     }
+}
+
+void PipelineCache::LogPipelineUse() const {
+    // How many built pipelines draws actually need: what a smaller kept limit would cost
+    constexpr std::array<u64, 3> windows{3600, 18000, 36000}; // 1, 5 and 10 min at 60 FPS
+    size_t built = 0, never = 0;
+    std::array<size_t, windows.size()> recent{};
+    for (const auto& [key, pipeline] : graphics_cache) {
+        if (pipeline == nullptr || !pipeline->IsBuilt()) {
+            continue;
+        }
+        ++built;
+        if (!pipeline->WasUsed()) {
+            ++never;
+            continue;
+        }
+        for (size_t window = 0; window < windows.size(); ++window) {
+            recent[window] += frame_count - pipeline->LastUse() <= windows[window] ? 1 : 0;
+        }
+    }
+    LOG_INFO(Render_Vulkan,
+             "Pipeline use at frame {}: {} built, {} never drawn, drawn within 3600/18000/36000 "
+             "frames: {}/{}/{}",
+             frame_count, built, never, recent[0], recent[1], recent[2]);
 }
 
 void PipelineCache::EvictUnusedPipelines() {
