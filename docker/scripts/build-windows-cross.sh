@@ -17,6 +17,11 @@ JOBS=${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}
 QT_ROOT=/opt/Qt-win/6.8.3/msvc2022_64
 QT_HOST_ROOT=/opt/Qt-host/6.8.3/gcc_64
 
+# Streamline includes <Softpub.h> and main_window.cpp links Dwmapi.lib; xwin only has the SDK's
+# and lowercase spellings.
+ln -sf SoftPub.h /xwin/sdk/include/um/Softpub.h
+ln -sf dwmapi.lib /xwin/sdk/lib/um/x86_64/Dwmapi.lib
+
 cmake -S /src -B /src/build-windows -G Ninja \
     -DCMAKE_SYSTEM_NAME=Windows \
     -DCMAKE_SYSTEM_VERSION=10.0 \
@@ -31,12 +36,15 @@ cmake -S /src -B /src/build-windows -G Ninja \
     -DCMAKE_LINKER=lld-link \
     -DCMAKE_AR=llvm-lib \
     -DCMAKE_RC_COMPILER=llvm-rc \
+    "-DCMAKE_RC_FLAGS=/I /xwin/sdk/include/um /I /xwin/sdk/include/shared /I /xwin/sdk/include/ucrt /I /xwin/crt/include" \
     -DCMAKE_MT=llvm-mt \
     "-DCMAKE_C_FLAGS=/vctoolsdir /xwin/crt /winsdkdir /xwin/sdk /DWIN32 /D_WINDOWS /DNOMINMAX" \
     "-DCMAKE_CXX_FLAGS=/vctoolsdir /xwin/crt /winsdkdir /xwin/sdk /DWIN32 /D_WINDOWS /EHsc /DNOMINMAX" \
     "-DCMAKE_EXE_LINKER_FLAGS=/libpath:/xwin/crt/lib/x86_64 /libpath:/xwin/sdk/lib/um/x86_64 /libpath:/xwin/sdk/lib/ucrt/x86_64" \
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL \
-    -DBOOST_CONTEXT_IMPLEMENTATION=winfib \
+    -DBOOST_CONTEXT_IMPLEMENTATION=fcontext \
+    -DCMAKE_ASM_MASM_COMPILER=/usr/lib/llvm-19/bin/llvm-ml \
+    -DCMAKE_ASM_MASM_FLAGS=-m64 \
     -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
     -DENABLE_WERROR="${ENABLE_WERROR}" \
     -DBUILD_TESTING=OFF \
