@@ -931,7 +931,27 @@ size_t KeptPipelines() {
 #ifdef __ANDROID__
     return 0;
 #else
-    static const size_t kept = KeptPipelinesForMemory(Common::GetMemInfo().TotalPhysicalMemory);
+    static const size_t kept = [] {
+        const u64 total = Common::GetMemInfo().TotalPhysicalMemory;
+        const Settings::RamUsageMode mode = Settings::values.ram_usage_mode.GetValue();
+        const RamTier tier = [&] {
+            switch (mode) {
+            case Settings::RamUsageMode::High:
+                return RamTier::High;
+            case Settings::RamUsageMode::Balanced:
+                return RamTier::Balanced;
+            case Settings::RamUsageMode::Low:
+                return RamTier::Low;
+            case Settings::RamUsageMode::Auto:
+                break;
+            }
+            return AutoRamTier(total);
+        }();
+        const size_t limit = KeptPipelinesForTier(tier, total);
+        LOG_INFO(Render_Vulkan, "RAM usage mode {}: keeping up to {} built graphics pipelines",
+                 Settings::CanonicalizeEnum(mode), limit);
+        return limit;
+    }();
     return kept;
 #endif
 }

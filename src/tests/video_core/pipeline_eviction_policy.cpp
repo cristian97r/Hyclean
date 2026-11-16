@@ -79,3 +79,17 @@ TEST_CASE("The prebuild waits for the load's driver cache saves where reads race
     REQUIRE_FALSE(PrebuildStartsWithBootBuilds(false, true));
     REQUIRE_FALSE(PrebuildStartsWithBootBuilds(true, true));
 }
+
+TEST_CASE("RAM tiers: Auto by installed RAM, High keeps what a quarter of RAM holds",
+          "[video_core][pipeline_eviction]") {
+    using Vulkan::AutoRamTier;
+    using Vulkan::KeptPipelinesForTier;
+    using Vulkan::RamTier;
+    constexpr u64 GiB = u64{1} << 30;
+    REQUIRE(AutoRamTier(31 * GiB) == RamTier::High); // a "32 GB" PC reports a bit less
+    REQUIRE(AutoRamTier(15 * GiB) == RamTier::Balanced);
+    REQUIRE(AutoRamTier(8 * GiB) == RamTier::Low);
+    REQUIRE(KeptPipelinesForTier(RamTier::High, 32 * GiB) == KeptPipelinesForMemory(32 * GiB));
+    REQUIRE(KeptPipelinesForTier(RamTier::Balanced, 32 * GiB) == 3000);
+    REQUIRE(KeptPipelinesForTier(RamTier::Low, 32 * GiB) == 1200);
+}

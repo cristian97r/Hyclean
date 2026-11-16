@@ -304,6 +304,11 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
            tr("Selects whether the emulator should prefer to conserve memory or make maximum usage "
               "of available video memory for performance.\nAggressive mode may impact performance "
               "of other applications such as recording software."));
+    INSERT(Settings, ram_usage_mode, tr("RAM Usage Mode:"),
+           tr("How many built shader pipelines stay in memory.\nHigh keeps all of them: no "
+              "pop-in.\nBalanced and Low drop ones not drawn for a few minutes: less RAM, but "
+              "places visited again may show brief pop-in while they rebuild.\nAuto picks by "
+              "installed RAM (32 GB or more: High, 16 GB: Balanced, less: Low)."));
     INSERT(Settings, skip_cpu_inner_invalidation, tr("Skip CPU Inner Invalidation"),
            tr("Skips certain cache invalidations during memory updates, reducing CPU usage and "
               "improving latency. This may cause soft-crashes."));
@@ -621,6 +626,13 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                           {
                               PAIR(VramUsageMode, Conservative, tr("Conservative")),
                               PAIR(VramUsageMode, Aggressive, tr("Aggressive")),
+                          }});
+    translations->insert({Settings::EnumMetadata<Settings::RamUsageMode>::Index(),
+                          {
+                              PAIR(RamUsageMode, Auto, tr("Auto")),
+                              PAIR(RamUsageMode, High, tr("High")),
+                              PAIR(RamUsageMode, Balanced, tr("Balanced")),
+                              PAIR(RamUsageMode, Low, tr("Low")),
                           }});
     translations->insert(
         {Settings::EnumMetadata<Settings::RendererBackend>::Index(),

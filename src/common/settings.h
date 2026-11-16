@@ -635,6 +635,10 @@ struct Values {
                                                            "vram_usage_mode",
                                                            Category::RendererAdvanced};
 
+    SwitchableSetting<RamUsageMode, true> ram_usage_mode{linkage, RamUsageMode::Auto,
+                                                         "ram_usage_mode",
+                                                         Category::RendererAdvanced};
+
     SwitchableSetting<NvdecEmulation> nvdec_emulation{linkage, NvdecEmulation::Cpu,
                                                       "nvdec_emulation", Category::RendererAdvanced};
 

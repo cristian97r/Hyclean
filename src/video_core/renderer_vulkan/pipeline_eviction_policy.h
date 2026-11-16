@@ -29,6 +29,32 @@ constexpr size_t KeptPipelinesForMemory(u64 total_memory) {
     return static_cast<size_t>(total_memory / 4 / PipelineBytes);
 }
 
+enum class RamTier { High, Balanced, Low };
+
+/// The tier Auto picks: High from 32 GB of RAM, Balanced from 16 GB, else Low. (A "32 GB" PC
+/// reports a bit less, so the bounds sit below the nominal sizes.)
+constexpr RamTier AutoRamTier(u64 total_memory) {
+    constexpr u64 GiB = u64{1} << 30;
+    return total_memory >= 28 * GiB ? RamTier::High
+           : total_memory >= 14 * GiB ? RamTier::Balanced
+                                      : RamTier::Low;
+}
+
+/// Built graphics pipelines kept per tier. One busy place draws ~550 (OoT, Market fountain);
+/// High keeps what a quarter of RAM holds (in practice every cached one: no pop-in).
+// ponytail: Balanced/Low counts come from one standing-still session; refine with a moving one.
+constexpr size_t KeptPipelinesForTier(RamTier tier, u64 total_memory) {
+    switch (tier) {
+    case RamTier::High:
+        return KeptPipelinesForMemory(total_memory);
+    case RamTier::Balanced:
+        return 3000;
+    case RamTier::Low:
+        return 1200;
+    }
+    return KeptPipelinesForMemory(total_memory);
+}
+
 /// Without a kept limit (`kept` 0, Android), prebuilt pipelines no draw has used stay up to this
 /// budget (~0.9 GB of driver memory): evicting them throws the prebuild away (OoT: 1174 of 1346
 /// evicted on the title screen, 684 rebuilt in 10 s on entering the field).
