@@ -52,7 +52,7 @@ other programs that use the graphics card (browsers, video players) while you pl
 - Advanced: GPU Mode: Low.
 - Advanced: VRAM Usage: Auto.
 - Advanced: RAM Usage Mode: Auto.
-- Advanced: Precache shaders before game start: Always.
+- Advanced: Build all cached shaders before game start: on.
 - Extras: Enable asynchronous shader compilation: on.
 
 **32 GB of memory and a graphics card with 12 GB or more**
@@ -86,18 +86,19 @@ list, right-click Ocarina of Time, choose Properties, open the Add-Ons tab, and 
   less memory; a place you revisit can flicker for a moment while its shaders reload.
 - **ASTC Recompression Method** BC3 stores textures in less video memory, and the picture loses a
   little quality. Do not use BC1: it breaks textures in this game (dark faces, banding).
-- **Precache shaders before game start** builds the game's shaders while the loading screen is up,
-  so the first time you do something new does not hitch. The first launch takes a few minutes.
-- **Build all cached shaders before game start** does the same for everything from your earlier
-  sessions. Loading takes longer and uses more memory.
+- **Precache shaders before game start** builds compute shaders from the game files with guessed
+  inputs. Most of them are never used, and it misses the slow ones, so leave it Off.
+- **Build all cached shaders before game start** (on by default) builds every shader from your
+  earlier sessions while the game loads, so nothing you have seen before freezes again. After an
+  update the first boot takes longer (about 40 s on our PC) while they are rebuilt.
 - **Enable asynchronous shader compilation** lets the game keep running while a new shader builds,
   instead of freezing.
 
 ### If the game stutters
 
-- Turn on Precache shaders before game start, and give it a few minutes the first time.
-- On a PC with memory to spare, turn on Build all cached shaders before game start.
-- The first time you visit a place or use an item, expect a short pause. It happens once.
+- Keep Build all cached shaders before game start on.
+- The first time you ever visit a place or use an item, expect a short pause (up to about 0.7 s).
+  It happens once, also across updates.
 
 ### If the game runs slow
 
@@ -184,8 +185,8 @@ vram_usage_mode\default=false
 vram_usage_mode=0
 ram_usage_mode\default=false
 ram_usage_mode=0
-precache_shaders\default=false
-precache_shaders=2
+build_all_cached_shaders\default=false
+build_all_cached_shaders=true
 use_asynchronous_shaders\default=false
 use_asynchronous_shaders=true
 ```
@@ -215,7 +216,6 @@ build_all_cached_shaders=true
 Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
 `use_vsync` 2 = FIFO. `gpu_accuracy` 0 Low, 1 High. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
 3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3 (avoid 1 = BC1).
-`precache_shaders` 2 = Always.
 
 Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
 Time: `custom/0400486024DEC000.ini`). There a key also needs `\use_global=false`; the game's
