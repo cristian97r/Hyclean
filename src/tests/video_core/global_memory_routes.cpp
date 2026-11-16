@@ -157,9 +157,9 @@ TEST_CASE("Selecting the buffer routes every access among all bound buffers",
     profile.select_global_memory_buffer = true;
     const auto selections{
         SelectionsPerFunction(Backend::SPIRV::EmitSPIRV(profile, fixture.program))};
-    // The 32, 64 and 128-bit load and store through every buffer, and the entry point: the routed
-    // load and store add none
-    CHECK(selections.size() == 7);
+    // The buffer search, the 32, 64 and 128-bit load and store through every buffer, and the entry
+    // point: the routed load and store add none
+    CHECK(selections.size() == 8);
     CHECK(routed == 9);
 }
 
