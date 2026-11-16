@@ -140,13 +140,11 @@ std::shared_ptr<LoweredNativeCode> TakeProgramCode(ProgramRecord& record) {
     return code;
 }
 
-u64 ProgramKey(const ProgramKeyInputs& inputs) {
-    // Streamed: the hash of the fields laid out one after another, without copying the program
-    XXH3_state_t state;
-    XXH3_64bits_reset(&state);
-    const auto put = [&state](const void* data, size_t size) {
-        XXH3_64bits_update(&state, data, size);
-    };
+namespace {
+
+// Streamed: the fields laid out one after another, without copying the program
+template <typename Put>
+void PutKeyInputs(const ProgramKeyInputs& inputs, Put put) {
     const u64 trap_count = inputs.verified_traps.size();
     const u64 native_count = inputs.native.size();
     put(&inputs.source, sizeof(inputs.source));
@@ -160,7 +158,27 @@ u64 ProgramKey(const ProgramKeyInputs& inputs) {
     put(inputs.verified_traps.data(), inputs.verified_traps.size_bytes());
     put(&native_count, sizeof(native_count));
     put(inputs.native.data(), inputs.native.size_bytes());
+}
+
+} // Anonymous namespace
+
+u64 ProgramKey(const ProgramKeyInputs& inputs) {
+    XXH3_state_t state;
+    XXH3_64bits_reset(&state);
+    PutKeyInputs(inputs, [&state](const void* data, size_t size) {
+        XXH3_64bits_update(&state, data, size);
+    });
     return XXH3_64bits_digest(&state);
+}
+
+u128 ProgramCheck(const ProgramKeyInputs& inputs) {
+    XXH3_state_t state;
+    XXH3_128bits_reset(&state);
+    PutKeyInputs(inputs, [&state](const void* data, size_t size) {
+        XXH3_128bits_update(&state, data, size);
+    });
+    const XXH128_hash_t hash = XXH3_128bits_digest(&state);
+    return {hash.low64, hash.high64};
 }
 
 u64 ProgramKey(const ProgramRecord& record) {

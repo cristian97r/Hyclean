@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <algorithm>
-#include <cstring>
-
 #include "common/assert.h"
 #include "common/logging.h"
 #include "video_core/native_lowering.h"
@@ -13,24 +10,6 @@
 #include "video_core/shader_cache_v2/records.h"
 
 namespace VideoCommon::ShaderCacheV2 {
-namespace {
-
-/// Whether a record holds these inputs: a key that matches by chance never gives another
-/// program's code
-bool HoldsInputs(const ProgramRecord& record, const ProgramKeyInputs& inputs) {
-    return record.source == inputs.source && record.stage == inputs.stage &&
-           record.header_size == inputs.header_size && record.geometry == inputs.geometry &&
-           record.tessellation_stage == inputs.tessellation_stage &&
-           record.native_code_address == inputs.native_code_address &&
-           std::ranges::equal(record.sph, inputs.sph) &&
-           std::ranges::equal(record.verified_traps, inputs.verified_traps) &&
-           record.native.size() == inputs.native.size() &&
-           std::memcmp(record.native.data(), inputs.native.data(), inputs.native.size_bytes()) ==
-               0;
-}
-
-} // Anonymous namespace
-
 Cache::Cache(std::filesystem::path file, WriterOptions options)
     : writer{std::move(file), options} {}
 
@@ -85,8 +64,8 @@ void Cache::LoadPrograms(std::span<const LogRecord> live) {
         if (!record || ProgramKey(*record) != entry.key) {
             continue;
         }
-        std::shared_ptr<const LoweredNativeCode> code = TakeProgramCode(*record);
-        table.insert_or_assign(entry.key, LoadedProgram{std::move(*record), std::move(code)});
+        const u128 check = ProgramCheck(ProgramKeyInputsOf(*record));
+        table.insert_or_assign(entry.key, LoadedProgram{check, TakeProgramCode(*record)});
     }
     loaded = std::move(table);
     loaded_ready.store(true, std::memory_order_release);
@@ -96,7 +75,7 @@ FoundProgram Cache::FindProgram(const ProgramKeyInputs& inputs) {
     const u64 key = ProgramKey(inputs);
     if (loaded_ready.load(std::memory_order_acquire)) {
         if (const auto it = loaded.find(key);
-            it != loaded.end() && HoldsInputs(it->second.record, inputs)) {
+            it != loaded.end() && it->second.check == ProgramCheck(inputs)) {
             return {ProgramLookup::Hit, it->second.code};
         }
     }

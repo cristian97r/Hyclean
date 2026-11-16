@@ -78,9 +78,10 @@ public:
     void KeepStalePrograms();
 
 private:
-    /// A record of this build's lowering, its code moved out into `code`
+    /// A record of this build's lowering: its code, and the check of its inputs (ProgramCheck)
+    /// instead of the native instructions, which the capture holds anyway
     struct LoadedProgram {
-        ProgramRecord record;
+        u128 check;
         std::shared_ptr<const LoweredNativeCode> code;
     };
 

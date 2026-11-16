@@ -104,6 +104,9 @@ struct ProgramKeyInputs {
 /// The address of the code is part of it only where the lowering puts it into the code.
 [[nodiscard]] u64 ProgramKey(const ProgramKeyInputs& inputs);
 [[nodiscard]] u64 ProgramKey(const ProgramRecord& record);
+/// A 128-bit hash of the same inputs, independent of the key: what a loaded record keeps instead
+/// of its instructions to tell a key that matches by chance
+[[nodiscard]] u128 ProgramCheck(const ProgramKeyInputs& inputs);
 
 [[nodiscard]] std::vector<u8> EncodeProgram(const ProgramRecord& record);
 [[nodiscard]] std::optional<ProgramRecord> DecodeProgram(std::span<const u8> payload);
