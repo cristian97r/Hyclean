@@ -26,7 +26,7 @@ Open **Emulation > Configure** (or press Ctrl+,), then **Graphics**. Each step n
 - Advanced: GPU Mode: Low.
 - Advanced: VRAM Usage: 2 GB.
 - Advanced: RAM Usage Mode: Low.
-- Advanced: ASTC Recompression Method: BC1.
+- Advanced: ASTC Recompression Method: BC3.
 - Extras: Enable asynchronous shader compilation: on.
 
 Not yet tested on a real 4 GB card. On our test PC the game needed about 4 GB of video memory at
@@ -85,7 +85,7 @@ list, right-click Ocarina of Time, choose Properties, open the Add-Ons tab, and 
 - **RAM Usage Mode** is how many shaders stay loaded. High means no pop-in and more memory. Low uses
   less memory; a place you revisit can flicker for a moment while its shaders reload.
 - **ASTC Recompression Method** BC3 stores textures in less video memory, and the picture loses a
-  little quality. BC1 saves more and loses more; use it only on a 4 GB card.
+  little quality. Do not use BC1: it breaks textures in this game (dark faces, banding).
 - **Precache shaders before game start** builds the game's shaders while the loading screen is up,
   so the first time you do something new does not hitch. The first launch takes a few minutes.
 - **Build all cached shaders before game start** does the same for everything from your earlier
@@ -141,7 +141,7 @@ vram_usage_mode=2
 ram_usage_mode\default=false
 ram_usage_mode=3
 astc_recompression\default=false
-astc_recompression=1
+astc_recompression=2
 use_asynchronous_shaders\default=false
 use_asynchronous_shaders=true
 ```
@@ -214,7 +214,7 @@ build_all_cached_shaders=true
 
 Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
 `use_vsync` 2 = FIFO. `gpu_accuracy` 0 Low, 1 High. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
-3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 1 = BC1, 2 = BC3.
+3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3 (avoid 1 = BC1).
 `precache_shaders` 2 = Always.
 
 Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
