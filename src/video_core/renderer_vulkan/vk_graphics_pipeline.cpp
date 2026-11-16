@@ -201,7 +201,7 @@ size_t NumAttachments(const FixedPipelineState& state) {
 
 template <typename Spec>
 bool Passes(const std::array<bool, NUM_STAGES>& stages,
-            const std::array<Shader::Info, NUM_STAGES>& stage_infos) {
+            const StageInfos& stage_infos) {
     for (size_t stage = 0; stage < NUM_STAGES; ++stage) {
         if (!Spec::enabled_stages[stage] && stages[stage]) {
             return false;
@@ -235,7 +235,7 @@ using ConfigureFuncPtr = bool (*)(GraphicsPipeline*, bool);
 
 template <typename Spec, typename... Specs>
 ConfigureFuncPtr FindSpec(const std::array<bool, NUM_STAGES>& stages,
-                          const std::array<Shader::Info, NUM_STAGES>& stage_infos) {
+                          const StageInfos& stage_infos) {
     if constexpr (sizeof...(Specs) > 0) {
         if (!Passes<Spec>(stages, stage_infos)) {
             return FindSpec<Specs...>(stages, stage_infos);
@@ -285,7 +285,7 @@ struct DefaultSpec {
 };
 
 ConfigureFuncPtr ConfigureFunc(const std::array<bool, NUM_STAGES>& stages,
-                               const std::array<Shader::Info, NUM_STAGES>& infos) {
+                               const StageInfos& infos) {
     return FindSpec<SimpleVertexSpec, SimpleVertexFragmentSpec, SimpleStorageSpec, SimpleImageSpec,
                     DefaultSpec>(stages, infos);
 }
@@ -406,7 +406,7 @@ GraphicsPipeline::GraphicsPipeline(
         if (!info) {
             continue;
         }
-        stage_infos[stage] = *info;
+        stage_infos.Set(stage, *info);
         enabled_uniform_buffer_masks[stage] = info->constant_buffer_mask;
         std::ranges::copy(info->constant_buffer_used_sizes, uniform_buffer_sizes[stage].begin());
         num_image_elements += Shader::NumDescriptors(info->texture_buffer_descriptors);
@@ -428,18 +428,18 @@ GraphicsPipeline::GraphicsPipeline(
     const auto any_written = [](const auto& descriptors) {
         return std::ranges::any_of(descriptors, [](const auto& desc) { return desc.is_written; });
     };
-    writes_storage = std::ranges::any_of(stage_infos, [&](const Shader::Info& info) {
+    writes_storage = std::ranges::any_of(stage_infos.All(), [&](const Shader::Info& info) {
         return info.stores_global_memory || any_written(info.storage_buffers_descriptors) ||
                any_written(info.image_descriptors) || any_written(info.image_buffer_descriptors);
     });
-    texture_memo_eligible = std::ranges::all_of(stage_infos, [](const Shader::Info& info) {
+    texture_memo_eligible = std::ranges::all_of(stage_infos.All(), [](const Shader::Info& info) {
         return info.texture_buffer_descriptors.empty() && info.image_buffer_descriptors.empty() &&
                info.image_descriptors.empty() &&
                std::ranges::all_of(info.texture_descriptors, [](const auto& desc) {
                    return desc.handle_program == ~0U && !desc.has_secondary;
                });
     });
-    writes_images = std::ranges::any_of(stage_infos, [&](const Shader::Info& info) {
+    writes_images = std::ranges::any_of(stage_infos.All(), [&](const Shader::Info& info) {
         return any_written(info.image_descriptors) || any_written(info.image_buffer_descriptors);
     });
     const auto block = [&](DeltaBlocker blocker) {
@@ -522,7 +522,7 @@ GraphicsPipeline::GraphicsPipeline(
         }
     }
 
-    DescriptorLayoutBuilder builder{MakeBuilder(device, stage_infos, mesh_emulation)};
+    DescriptorLayoutBuilder builder{MakeBuilder(device, stage_infos.Copy(), mesh_emulation)};
     // Mesh emulation binds one descriptor set to both the compute dispatch and the draw.
     uses_push_descriptor = !mesh_emulation && builder.CanUsePushDescriptor();
     uses_descriptor_buffer = !mesh_emulation && builder.CanUseDescriptorBuffer() &&
@@ -554,7 +554,7 @@ GraphicsPipeline::GraphicsPipeline(
         if (!uses_push_descriptor && mesh_emulation) {
             // The set also holds the emulation's buffers.
             std::array<Shader::Info, NUM_STAGES + 1> bank_infos{};
-            std::ranges::copy(stage_infos, bank_infos.begin());
+            std::ranges::copy(stage_infos.All(), bank_infos.begin());
             bank_infos.back().storage_buffers_descriptors.push_back({
                 .cbuf_index = 0,
                 .cbuf_offset = 0,
@@ -607,7 +607,7 @@ GraphicsPipeline::GraphicsPipeline(
             }
         } else if (!uses_push_descriptor) {
             descriptor_allocator = descriptor_pool.Allocator(device, scheduler, set_layout,
-                                                             stage_infos,
+                                                             stage_infos.Copy(),
                                                              builder.UsesUpdateAfterBindPool());
         }
     }
@@ -709,7 +709,7 @@ GraphicsPipeline::GraphicsPipeline(
 u64 KeptGraphicsStages::Bytes() const noexcept {
     u64 bytes = sizeof(*this);
     for (size_t stage = 0; stage < NUM_STAGES; ++stage) {
-        bytes += spirv[stage].size() + (infos[stage] ? sizeof(Shader::Info) : 0);
+        bytes += spirv[stage].size() + (infos.Find(stage) ? sizeof(Shader::Info) : 0);
     }
     if (mesh_emulation) {
         bytes += (mesh_emulation->vertex_spirv.size() + mesh_emulation->distribution_spirv.size()) *
@@ -719,17 +719,12 @@ u64 KeptGraphicsStages::Bytes() const noexcept {
 }
 
 KeptGraphicsStages GraphicsPipeline::TakeKeptStages() {
-    KeptGraphicsStages kept{
+    return KeptGraphicsStages{
         .spirv = std::move(kept_spirv),
+        .infos = stage_infos,
         .mesh_emulation = mesh_emulation,
         .mapped_pointers = mapped_pointers,
     };
-    for (size_t stage = 0; stage < NUM_STAGES; ++stage) {
-        if (!kept.spirv[stage].empty()) {
-            kept.infos[stage] = std::make_unique<Shader::Info>(stage_infos[stage]);
-        }
-    }
-    return kept;
 }
 
 void GraphicsPipeline::AddTransition(GraphicsPipeline* transition) {
@@ -2340,7 +2335,7 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
 
 void GraphicsPipeline::Validate() {
     size_t num_images{};
-    for (const auto& info : stage_infos) {
+    for (const auto& info : stage_infos.All()) {
         num_images += Shader::NumDescriptors(info.texture_buffer_descriptors);
         num_images += Shader::NumDescriptors(info.image_buffer_descriptors);
         num_images += Shader::NumDescriptors(info.texture_descriptors);

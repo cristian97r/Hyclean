@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -115,12 +116,60 @@ struct MeshEmulationSetup {
     std::array<u32, 4> position_lines{~0U, ~0U, ~0U, ~0U}; ///< line of PositionX..W
 };
 
+/// A pipeline's stage infos, held only for its present stages (an Info is ~7 KB and most
+/// pipelines have 2 of 5 stages: OoT's 4,380 cached pipelines held ~90 MB of absent ones). An
+/// absent stage reads as an empty Info. Copies share the infos (an evicted pipeline keeps them).
+class StageInfos {
+    static constexpr size_t NUM_STAGES = Tegra::Engines::Maxwell3D::Regs::MaxShaderStage;
+
+public:
+    void Set(size_t stage, const Shader::Info& info) {
+        infos[stage] = std::make_shared<const Shader::Info>(info);
+    }
+
+    /// The stage's info, null when the stage is absent
+    [[nodiscard]] const Shader::Info* Find(size_t stage) const noexcept {
+        return infos[stage].get();
+    }
+
+    [[nodiscard]] const Shader::Info& operator[](size_t stage) const noexcept {
+        return infos[stage] ? *infos[stage] : Empty();
+    }
+
+    /// Every stage, absent ones as empty Infos
+    [[nodiscard]] auto All() const {
+        return std::views::iota(size_t{0}, NUM_STAGES) |
+               std::views::transform([this](size_t stage) -> const Shader::Info& {
+                   return (*this)[stage];
+               });
+    }
+
+    /// A contiguous copy, for the builders that take a span
+    [[nodiscard]] std::array<Shader::Info, NUM_STAGES> Copy() const {
+        std::array<Shader::Info, NUM_STAGES> copy{};
+        for (size_t stage = 0; stage < NUM_STAGES; ++stage) {
+            if (infos[stage]) {
+                copy[stage] = *infos[stage];
+            }
+        }
+        return copy;
+    }
+
+private:
+    static const Shader::Info& Empty() noexcept {
+        static const Shader::Info empty{};
+        return empty;
+    }
+
+    std::array<std::shared_ptr<const Shader::Info>, NUM_STAGES> infos;
+};
+
 /// What an evicted graphics pipeline needs to be built again without translating its shaders
 struct KeptGraphicsStages {
     static constexpr size_t NUM_STAGES = Tegra::Engines::Maxwell3D::Regs::MaxShaderStage;
 
     std::array<std::vector<u8>, NUM_STAGES> spirv; ///< zstd, empty for absent stages
-    std::array<std::unique_ptr<Shader::Info>, NUM_STAGES> infos;
+    StageInfos infos;
     std::optional<MeshEmulationSetup> mesh_emulation;
     VideoCommon::EvictedPointerSlots::Slots mapped_pointers;
 
@@ -458,7 +507,7 @@ private:
     std::array<vk::ShaderModule, NUM_STAGES> spv_modules;
     std::array<std::vector<u8>, NUM_STAGES> kept_spirv; ///< zstd, after the build
 
-    std::array<Shader::Info, NUM_STAGES> stage_infos;
+    StageInfos stage_infos;
     std::array<u32, 5> enabled_uniform_buffer_masks{};
     VideoCommon::UniformBufferSizes uniform_buffer_sizes{};
     u32 num_descriptor_entries{};

@@ -2635,7 +2635,7 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) noexc
 std::unique_ptr<GraphicsPipeline> PipelineCache::RebuildGraphicsPipeline(KeptGraphicsStages kept) {
     std::array<const Shader::Info*, Maxwell::MaxShaderStage> infos{};
     for (size_t stage = 0; stage < infos.size(); ++stage) {
-        infos[stage] = kept.infos[stage].get();
+        infos[stage] = kept.infos.Find(stage);
     }
     const u64 bytes = kept.Bytes();
     auto emit = [spirv = std::move(kept.spirv)] {
