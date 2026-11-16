@@ -5,99 +5,234 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 -->
 
-<h2 align="center">⚠️ Lichii has no official website ⚠️</h2>
+# Lichii (tasarren fork)
 
-> [!CAUTION]
-> **Lichii has no official website.** The only site run by this project is the **game compatibility website, [lichii.zortos.me](https://lichii.zortos.me)**, for compatibility reports only. Download Lichii **only** from this repository's [releases page](https://github.com/zortos293/Lichii/releases). Any other "Lichii" website or download (such as lichii.org) is not ours and may contain malware ([#545](https://github.com/zortos293/Lichii/issues/545)).
+A fork of [zortos293/Lichii](https://github.com/zortos293/Lichii), a Nintendo Switch and Switch 2
+emulator. This fork works on speed, memory use and stutter, tested mostly with The Legend of Zelda:
+Ocarina of Time. It follows Lichii's `nx2` branch; our changes are on the `next` branch.
 
-<p align="center">
-  <img src="dist/branding/lichii_icon_with_logo.png" alt="Lichii" width="600">
-</p>
+Downloads: [releases](https://github.com/tasarren/Lichii/releases). Games, keys and firmware are not
+included; use only what you legally own.
 
-# Lichii
+## Settings for the best speed (Ocarina of Time)
 
-Lichii is an experimental, open-source Nintendo Switch and Switch 2 emulator written in C++. It builds on Eglantine, Eden, yuzu and Sudachi, preserving their contributions while developing this fork's game compatibility and renderer fixes.
+Open **Emulation > Configure** (or press Ctrl+,), then **Graphics**. Each step names the tab.
 
-This is an independent fork, not an official release of those upstream projects. Lichii is not affiliated with Nintendo.
+**Graphics card with 4 GB (for example GTX 1050 Ti, GTX 1650, RX 570 4 GB)**
 
-Visit the [Lichii game compatibility website](https://lichii.zortos.me) to find games and compare community compatibility reports.
+- Graphics: Resolution 1X.
+- Graphics: Ocarina of Time render scale: Ultra Performance (1280x720).
+- Graphics: Frame rate limit (Switch 2): 60.
+- Advanced: GPU Mode: Low.
+- Advanced: VRAM Usage: 2 GB.
+- Advanced: RAM Usage Mode: Low.
+- Advanced: ASTC Recompression Method: BC1.
+- Extras: Enable asynchronous shader compilation: on.
 
-## Downloads and setup
+Not yet tested on a real 4 GB card. On our test PC the game needed about 4 GB of video memory at
+1920x1080 even with the 2 GB setting, so a 4 GB card needs the smaller 1280x720 render scale. Close
+other programs that use the graphics card (browsers, video players) while you play.
 
-Download Lichii only from this repository's [releases page](https://github.com/zortos293/Lichii/releases). Lichii has no other download site: archives offered elsewhere, such as lichii.org, are not built by this project, and one has been reported to install malware ([#545](https://github.com/zortos293/Lichii/issues/545)).
+**16 GB of memory, or a graphics card with 6 to 8 GB**
 
-On Windows, extract the entire build archive and run **lichii.exe**. Only use games and system files you have legally obtained. Games, keys and firmware are not included.
+- Graphics: Resolution 1X.
+- Graphics: Ocarina of Time render scale: Performance.
+- Graphics: Frame rate limit (Switch 2): 60.
+- Advanced: GPU Mode: Low.
+- Advanced: VRAM Usage: 4 GB.
+- Advanced: RAM Usage Mode: Low.
+- Advanced: ASTC Recompression Method: BC3.
+- Extras: Enable asynchronous shader compilation: on.
 
-### Existing saves and settings
+**In between**
 
-Lichii uses its own profile: `%APPDATA%\lichii` on Windows, and the `lichii` directories under `$XDG_DATA_HOME`, `$XDG_CONFIG_HOME` and `$XDG_CACHE_HOME` on Linux and macOS. Without XDG overrides, these are `~/.local/share/lichii`, `~/.config/lichii` and `~/.cache/lichii`. An existing portable `user/` directory still takes priority and is not imported or changed by the wizard.
+- Graphics: Resolution 1X.
+- Graphics: Ocarina of Time render scale: Balanced.
+- Graphics: Frame rate limit (Switch 2): 60.
+- Advanced: GPU Mode: Low.
+- Advanced: VRAM Usage: Auto.
+- Advanced: RAM Usage Mode: Auto.
+- Advanced: Precache shaders before game start: Always.
+- Extras: Enable asynchronous shader compilation: on.
 
-On the first non-portable GUI launch, Lichii offers to import Eden and other detected emulator profiles. Back up `%APPDATA%\eden` first on Windows, or the old data, config and cache directories on Unix, and close the source emulator. Choose **Keep Old Data** to copy without changing the source, then check your saves and relaunch. Existing destination data is retained in backup directories rather than merged. Move also retains a source backup until you remove it yourself; Link deliberately shares settings and saves. Paths outside the imported data root remain shared and unchanged. An interrupted import offers recovery on the next launch. `eden-cli`, including `--help` and `--version`, refuses to initialize configuration until you import or explicitly choose **Start fresh** in the GUI.
+**32 GB of memory and a graphics card with 12 GB or more**
 
-## Compatibility and issue reports
+- Graphics: Resolution 1X.
+- Graphics: Ocarina of Time render scale: Native.
+- Graphics: Frame rate limit (Switch 2): 120.
+- Graphics: VSync Mode: FIFO (VSync).
+- Advanced: GPU Mode: Low.
+- Advanced: VRAM Usage: Auto.
+- Advanced: RAM Usage Mode: High.
+- Advanced: Build all cached shaders before game start: on.
 
-Compatibility and performance vary by game, hardware and driver. Rendering errors, stutters and crashes remain possible. Passing automated tests does not establish that a game renders correctly, and this project makes no universal frame-rate guarantee.
+Above 60 the game plays too fast unless FPS Unlock is on. It is on by default. To check: in the game
+list, right-click Ocarina of Time, choose Properties, open the Add-Ons tab, and leave "FPS Unlock
+(built-in)" ticked.
 
-Browse [community compatibility reports](https://lichii.zortos.me/reports) for results with each player's build and setup.
+### What each choice changes
 
-Desktop reporting requires a build containing [PR #303](https://github.com/zortos293/Lichii/pull/303) and is not available in build 88. In builds that include it, play and stop a Switch 2 game, then right-click that game and choose **Submit compatibility report**. Only the latest session in the current Lichii process is eligible.
+- **Resolution** is the emulator's own scaling. 1X uses the least video memory. Higher uses more.
+- **Ocarina of Time render scale** is the size the game itself draws at. Native is sharpest.
+  Performance is 1920x1080 and the smoothest.
+- **Frame rate limit (Switch 2)** is how often the game draws. 60 matches the original. Higher is
+  smoother, but only with FPS Unlock, or the game speeds up.
+- **VSync Mode** stops the picture tearing. FIFO (VSync) never tears. Mailbox can feel slightly
+  quicker but sometimes drops a frame.
+- **GPU Mode** Low runs faster. High is more accurate and slower; this game does not need it.
+- **VRAM Usage** is how much video memory the emulator keeps. Auto uses most of your card and leaves
+  some for everything else. 4 GB keeps the game inside a small card.
+- **RAM Usage Mode** is how many shaders stay loaded. High means no pop-in and more memory. Low uses
+  less memory; a place you revisit can flicker for a moment while its shaders reload.
+- **ASTC Recompression Method** BC3 stores textures in less video memory, and the picture loses a
+  little quality. BC1 saves more and loses more; use it only on a 4 GB card.
+- **Precache shaders before game start** builds the game's shaders while the loading screen is up,
+  so the first time you do something new does not hitch. The first launch takes a few minutes.
+- **Build all cached shaders before game start** does the same for everything from your earlier
+  sessions. Loading takes longer and uses more memory.
+- **Enable asynchronous shader compilation** lets the game keep running while a new shader builds,
+  instead of freezing.
 
-Confirm the matching website catalog entry and review the editable machine, game, setup, and enabled add-on details prefilled where available. Check the public preview and give explicit consent before submitting. Nothing uploads automatically, and the native v1 reporter does not read or upload logs or files.
+### If the game stutters
 
-When [reporting an issue](https://github.com/zortos293/Eglantine/issues), include:
+- Turn on Precache shaders before game start, and give it a few minutes the first time.
+- On a PC with memory to spare, turn on Build all cached shaders before game start.
+- The first time you visit a place or use an item, expect a short pause. It happens once.
 
-- The exact build, game version, CPU, GPU and driver version.
-- Relevant settings and steps to reproduce the problem.
-- A screenshot and the log from the affected session, after checking it for personal information.
+### If the game runs slow
 
-Do not upload game files, keys, firmware or private account information.
+- Set Ocarina of Time render scale to Performance.
+- Set RAM Usage Mode to Low and VRAM Usage to 4 GB (2 GB on a 4 GB card).
+- Set the frame rate limit to 60.
+- Set GPU Mode to Low.
 
-## Building and contributing
+### If the game crashes
 
-See the [build guide](docs/Build.md), [user documentation](docs/user/README.md) and [coding guidelines](docs/Coding.md). Some inherited documentation and internal build target names still use upstream names. The GUI build target is `lichii`; its output is `lichii.exe` on Windows and `lichii` on other desktop platforms.
+- Set VRAM Usage to Auto.
+- Update your graphics driver.
+- If it still crashes, use Help > Report a Bug and attach the file it makes to an
+  [issue](https://github.com/tasarren/Lichii/issues).
 
-Keep changes focused and distinguish code-level checks from actual gameplay testing.
+## Copy-paste configuration
 
-## Artwork
-Art created by YOB (yobslab)
-The supplied Lichii logo, icon and library artwork are in [dist/branding](dist/branding). Windows, Linux and macOS icon resources are generated from that artwork by [Generate-LichiiIcons.ps1](tools/Generate-LichiiIcons.ps1).
+The same settings as config file lines, if you prefer to edit the file. Close Lichii first. All keys
+go in the `[Renderer]` section of `qt-config.ini`:
 
-## Support Lichii
+- Windows: `%APPDATA%\lichii\config\qt-config.ini`
+- Linux: `~/.config/lichii/qt-config.ini`
 
-Lichii is free and stays free. If you want to help, you can donate in crypto. Donations help pay for the AI tools and build machines used to develop this open-source project faster.
+If a key is already there, change its lines instead of adding a second copy. Each setting needs its
+`\default=false` line, or Lichii ignores the value.
 
-**Solana (SOL)**
-```text
-JepEjfyWjGjhJvHSrqj52KtLjcbbbmUh1iGqerYBF4w
+**4 GB graphics card**
+
+```ini
+[Renderer]
+resolution_setup\default=false
+resolution_setup=3
+ocarina_render_scale\default=false
+ocarina_render_scale=3
+nx2_frame_rate_limit\default=false
+nx2_frame_rate_limit=60
+gpu_accuracy\default=false
+gpu_accuracy=0
+vram_usage_mode\default=false
+vram_usage_mode=2
+ram_usage_mode\default=false
+ram_usage_mode=3
+astc_recompression\default=false
+astc_recompression=1
+use_asynchronous_shaders\default=false
+use_asynchronous_shaders=true
 ```
 
-**Ethereum (ETH)**
-```text
-0x055ABa1b80Bc35C836Ce7E9F47c2b3d6C75b5534
+**Low (16 GB memory or 6 to 8 GB graphics card)**
+
+```ini
+[Renderer]
+resolution_setup\default=false
+resolution_setup=3
+ocarina_render_scale\default=false
+ocarina_render_scale=2
+nx2_frame_rate_limit\default=false
+nx2_frame_rate_limit=60
+gpu_accuracy\default=false
+gpu_accuracy=0
+vram_usage_mode\default=false
+vram_usage_mode=3
+ram_usage_mode\default=false
+ram_usage_mode=3
+astc_recompression\default=false
+astc_recompression=2
+use_asynchronous_shaders\default=false
+use_asynchronous_shaders=true
 ```
 
-**Bitcoin (BTC)**
-```text
-bc1qcvxdpf4qvdhqp8ee4s355cjmxrzsphsdwpl8w4
+**Mid**
+
+```ini
+[Renderer]
+resolution_setup\default=false
+resolution_setup=3
+ocarina_render_scale\default=false
+ocarina_render_scale=1
+nx2_frame_rate_limit\default=false
+nx2_frame_rate_limit=60
+gpu_accuracy\default=false
+gpu_accuracy=0
+vram_usage_mode\default=false
+vram_usage_mode=0
+ram_usage_mode\default=false
+ram_usage_mode=0
+precache_shaders\default=false
+precache_shaders=2
+use_asynchronous_shaders\default=false
+use_asynchronous_shaders=true
 ```
 
-**BNB Smart Chain (BNB)**
-```text
-0x055ABa1b80Bc35C836Ce7E9F47c2b3d6C75b5534
+**High (32 GB memory and 12 GB+ graphics card)**
+
+```ini
+[Renderer]
+resolution_setup\default=false
+resolution_setup=3
+ocarina_render_scale\default=false
+ocarina_render_scale=0
+nx2_frame_rate_limit\default=false
+nx2_frame_rate_limit=120
+use_vsync\default=false
+use_vsync=2
+gpu_accuracy\default=false
+gpu_accuracy=0
+vram_usage_mode\default=false
+vram_usage_mode=0
+ram_usage_mode\default=false
+ram_usage_mode=1
+build_all_cached_shaders\default=false
+build_all_cached_shaders=true
 ```
 
-**Polygon**
-```text
-0x055ABa1b80Bc35C836Ce7E9F47c2b3d6C75b5534
-```
+Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
+`use_vsync` 2 = FIFO. `gpu_accuracy` 0 Low, 1 High. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
+3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 1 = BC1, 2 = BC3.
+`precache_shaders` 2 = Always.
 
-Send each coin on its matching network. Coins sent on the wrong network can't be recovered.
+Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
+Time: `custom/0400486024DEC000.ini`). There a key also needs `\use_global=false`; the game's
+Properties window writes these for you.
 
-> [!NOTE]
-> Donations are voluntary gifts and are non-refundable. A donation does not buy any product, service, perk, early access, exclusive build, priority support or say in the project. Every release stays free and public for everyone.
+## Reporting a problem
+
+Open an [issue](https://github.com/tasarren/Lichii/issues) with the build number, the game, your
+CPU, GPU and driver, your settings, and the log (File > Open Lichii Folders > Log Folder) or a Help > Report a Bug
+file. Check it for personal information first. Do not upload games, keys or firmware.
+
+## Building
+
+See the [build guide](docs/Build.md).
 
 ## Credits and license
 
-Lichii inherits the work of the Eglantine, Eden, yuzu and Sudachi projects and their contributors, including Eglantine's original developer Camille LaVey. Original copyright notices and third-party licenses are retained.
-
-See [LICENSE.txt](LICENSE.txt) and the source files for applicable license terms.
+This fork builds on Lichii and the projects it comes from: Eglantine, Eden, yuzu and Sudachi, and
+their contributors. Original copyright notices and third-party licenses are kept. See
+[LICENSE.txt](LICENSE.txt) and the source files for the license terms. Not affiliated with Nintendo.
