@@ -48,7 +48,7 @@ BufferCache<P>::BufferCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, R
     gpu_modified_ranges.Clear();
     inline_buffer_id = NULL_BUFFER_ID;
 #ifdef LICHII_LEGACY
-    immediately_free = (Settings::values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Aggressive);
+    immediately_free = (Settings::values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Unlimited);
 #endif
     if (!runtime.CanReportMemoryUsage()) {
         minimum_memory = DEFAULT_EXPECTED_MEMORY;
@@ -57,6 +57,8 @@ BufferCache<P>::BufferCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, R
     }
 
     const s64 device_local_memory = static_cast<s64>(runtime.GetDeviceLocalMemory());
+    // A small VRAM target (vram_usage_mode 2 GB: 256 MiB) keeps buffers to an eighth of it.
+    native_collect_memory = (std::min)(u64{512_MiB}, static_cast<u64>(device_local_memory) / 8);
     const s64 min_spacing_expected = device_local_memory - 1_GiB;
     const s64 min_spacing_critical = device_local_memory - 512_MiB;
     const s64 mem_threshold = (std::min)(device_local_memory, TARGET_THRESHOLD);
@@ -221,8 +223,8 @@ void BufferCache<P>::TickFrame() {
         // downloading the GPU-written ones, ~5% of the GPU thread) that were recreated later.
         // Collect when the buffers themselves are large. At 1 GiB it held geometry of scenes
         // long gone: title 1's title screen grew to ~0.9 GB of buffers in ten minutes.
-        if (buffer_bytes >= 512_MiB) {
-            RunGarbageCollector(buffer_bytes >= 1_GiB);
+        if (buffer_bytes >= native_collect_memory) {
+            RunGarbageCollector(buffer_bytes >= 2 * native_collect_memory);
         }
     } else if (total_used_memory >= minimum_memory) {
         RunGarbageCollector(total_used_memory >= critical_memory);

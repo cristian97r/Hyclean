@@ -25,7 +25,7 @@ void ForEachRecommendedSetting(Values& settings, Func&& func) {
     entry(settings.dma_accuracy, DmaAccuracy::Default);
     entry(settings.gpu_fence_behavior, GpuFenceBehavior::Default);
     entry(settings.native_compute_write_mark, NativeComputeWriteMark::Auto);
-    entry(settings.vram_usage_mode, VramUsageMode::Conservative);
+    entry(settings.vram_usage_mode, VramUsageMode::Auto);
     entry(settings.nvdec_emulation, NvdecEmulation::Gpu);
     entry(settings.max_anisotropy, AnisotropyMode::Automatic);
     entry(settings.accelerate_astc, AstcDecodeMode::Gpu);

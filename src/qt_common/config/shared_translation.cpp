@@ -300,10 +300,11 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, frame_pacing_mode, tr("Frame Pacing Mode (Vulkan only)"),
            tr("Controls how the emulator manages frame pacing to reduce stuttering and make the "
               "frame rate smoother and more consistent."));
-    INSERT(Settings, vram_usage_mode, tr("VRAM Usage Mode:"),
-           tr("Selects whether the emulator should prefer to conserve memory or make maximum usage "
-              "of available video memory for performance.\nAggressive mode may impact performance "
-              "of other applications such as recording software."));
+    INSERT(Settings, vram_usage_mode, tr("VRAM Usage:"),
+           tr("How much video memory the emulator aims to stay under. Textures and buffers past "
+              "it are freed and loaded again when needed.\nAuto: 70% of what the GPU driver "
+              "allows, leaving room for other programs.\nUnlimited: up to what the driver "
+              "allows.\nA target below what a game's scenes need costs performance."));
     INSERT(Settings, ram_usage_mode, tr("RAM Usage Mode:"),
            tr("How many built shader pipelines stay in memory.\nHigh keeps all of them: no "
               "pop-in.\nBalanced and Low drop ones not drawn for a few minutes: less RAM, but "
@@ -624,8 +625,11 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                           }});
     translations->insert({Settings::EnumMetadata<Settings::VramUsageMode>::Index(),
                           {
-                              PAIR(VramUsageMode, Conservative, tr("Conservative")),
-                              PAIR(VramUsageMode, Aggressive, tr("Aggressive")),
+                              PAIR(VramUsageMode, Auto, tr("Auto (70% of VRAM)")),
+                              PAIR(VramUsageMode, Unlimited, tr("Unlimited")),
+                              PAIR(VramUsageMode, Gb2, tr("2 GB")),
+                              PAIR(VramUsageMode, Gb4, tr("4 GB")),
+                              PAIR(VramUsageMode, Gb8, tr("8 GB")),
                           }});
     translations->insert({Settings::EnumMetadata<Settings::RamUsageMode>::Index(),
                           {

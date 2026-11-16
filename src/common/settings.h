@@ -631,7 +631,7 @@ struct Values {
         true};
 
     SwitchableSetting<VramUsageMode, true> vram_usage_mode{linkage,
-                                                           VramUsageMode::Conservative,
+                                                           VramUsageMode::Auto,
                                                            "vram_usage_mode",
                                                            Category::RendererAdvanced};
 

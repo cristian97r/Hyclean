@@ -567,7 +567,7 @@
     <string name="anisotropic_filtering">Anisotropic filtering</string>
     <string name="anisotropic_filtering_description">Improves the quality of textures when viewed at oblique angles</string>
     <string name="vram_usage_mode">VRAM Usage Mode</string>
-    <string name="vram_usage_mode_description">Control how aggressively the emulator allocates and frees GPU memory.</string>
+    <string name="vram_usage_mode_description">How much video memory the emulator aims to stay under. Auto takes 70% of what the GPU driver allows.</string>
     <string name="accelerate_astc">ASTC Decoding Method</string>
     <string name="accelerate_astc_description">Pick how ASTC-compressed textures are decoded for rendering: CPU (slow, safe), GPU (fast, recommended), or CPU Async (no stutters, may cause issues)</string>
 
@@ -1144,6 +1144,11 @@
 
     <string name="vram_usage_conservative">Conservative</string>
     <string name="vram_usage_aggressive">Aggressive</string>
+    <string name="vram_usage_auto">Auto (70% of VRAM)</string>
+    <string name="vram_usage_unlimited">Unlimited</string>
+    <string name="vram_usage_2gb">2 GB</string>
+    <string name="vram_usage_4gb">4 GB</string>
+    <string name="vram_usage_8gb">8 GB</string>
 
     <!-- Resolutions -->
     <string name="resolution_quarter" translatable="false">0.25X (180p/270p)</string>

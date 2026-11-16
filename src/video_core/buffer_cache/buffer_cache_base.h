@@ -1255,6 +1255,7 @@ private:
     u64 buffer_bytes = 0; ///< The buffers' allocated size (total_used_memory may be the device's)
     u64 minimum_memory = 0;
     u64 critical_memory = 0;
+    u64 native_collect_memory = 512_MiB; ///< Buffer bytes from which native titles collect
     BufferId inline_buffer_id;
 #ifdef LICHII_LEGACY
     bool immediately_free = false;

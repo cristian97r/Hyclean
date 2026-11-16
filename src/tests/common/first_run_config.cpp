@@ -121,7 +121,7 @@ void CheckUnchangedProfile() {
     CHECK(values.fsr_sharpening_slider.GetValue() == 25);
     CHECK(values.dma_accuracy.GetValue() == Settings::DmaAccuracy::Default);
     CHECK(values.gpu_fence_behavior.GetValue() == Settings::GpuFenceBehavior::Default);
-    CHECK(values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Conservative);
+    CHECK(values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Auto);
     CHECK(values.max_anisotropy.GetValue() == Settings::AnisotropyMode::Automatic);
     CHECK(values.accelerate_astc.GetValue() == Settings::AstcDecodeMode::Gpu);
     CHECK(values.frame_pacing_mode.GetValue() == Settings::FramePacingMode::Target_Auto);

@@ -113,13 +113,19 @@
     </integer-array>
 
     <string-array name="vramUsageMethodNames">
-        <item>@string/vram_usage_conservative</item>
-        <item>@string/vram_usage_aggressive</item>
+        <item>@string/vram_usage_auto</item>
+        <item>@string/vram_usage_unlimited</item>
+        <item>@string/vram_usage_2gb</item>
+        <item>@string/vram_usage_4gb</item>
+        <item>@string/vram_usage_8gb</item>
     </string-array>
 
     <integer-array name="vramUsageMethodValues">
         <item>0</item>
         <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
     </integer-array>
 
     <string-array name="astcDecodingMethodNames">

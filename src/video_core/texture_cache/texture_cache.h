@@ -839,7 +839,7 @@ void TextureCache<P>::TickFrame() {
             if (native_thresholds_applied && budget_check_frames++ % 30 == 0) {
                 const u64 budget = runtime.GetDeviceMemoryBudget();
                 retention_limit = 0;
-                if (budget > 2_GiB) {
+                if (budget >= 2_GiB) { // vram_usage_mode 2 GB caps the budget at 2 GiB
                     const u64 margin = (std::min)(budget / 8, 1_GiB);
                     if constexpr (requires { runtime.GetDeviceMemorySlack(); }) {
                         // The usage counted here leaves out the unused part of the allocator's

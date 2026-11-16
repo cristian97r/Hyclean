@@ -34,6 +34,7 @@
 #include "common/settings.h"
 #include "common/settings_enums.h"
 #include "video_core/nx2_stutter_trace.h"
+#include "video_core/vram_target.h"
 #include "video_core/vulkan_common/nsight_aftermath_tracker.h"
 #include "video_core/vulkan_common/vma.h"
 #include "video_core/vulkan_common/vulkan_device.h"
@@ -2407,6 +2408,10 @@ u64 Device::GetDeviceHeapMemoryBudget() const {
             result += AllocatedUsage(budget.heapUsage[heap], heap_budgets[heap]);
         }
     }
+    // The VRAM usage mode's target bounds the whole device's use, so it caps the sum.
+    if (vram_target != 0) {
+        result = (std::min)(result, vram_target);
+    }
     return result;
 }
 
@@ -2460,19 +2465,32 @@ void Device::CollectPhysicalMemoryInfo() {
         device_access_memory += heap_size;
     }
     main_heap_size = limit(mem_properties.memoryHeaps[main_heap].size);
+    const Settings::VramUsageMode vram_mode = Settings::values.vram_usage_mode.GetValue();
+    const u64 device_budget = device_access_memory;
+    vram_target = VideoCommon::VramTarget(vram_mode, device_budget);
+    if (vram_target != 0) {
+        LOG_INFO(Render_Vulkan, "VRAM usage mode {}: target {} MiB (device budget {} MiB)",
+                 Settings::CanonicalizeEnum(vram_mode), vram_target >> 20, device_budget >> 20);
+    } else {
+        LOG_INFO(Render_Vulkan, "VRAM usage mode {}: no target (device budget {} MiB)",
+                 Settings::CanonicalizeEnum(vram_mode), device_budget >> 20);
+    }
     if (is_integrated) {
         const s64 available_memory = static_cast<s64>(device_access_memory - device_initial_usage);
-        const u64 memory_size = Settings::values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Aggressive ? 6_GiB : 4_GiB;
+        const u64 memory_size = vram_mode == Settings::VramUsageMode::Unlimited ? 6_GiB : 4_GiB;
         device_access_memory = static_cast<u64>(std::max<s64>(std::min<s64>(available_memory - 8_GiB, memory_size), std::min<s64>(local_memory, memory_size)));
     } else {
         const u64 reserve_memory = std::min<u64>(device_access_memory / 8, 1_GiB);
         device_access_memory -= reserve_memory;
-        if (Settings::values.vram_usage_mode.GetValue() != Settings::VramUsageMode::Aggressive) {
+        if (vram_mode != Settings::VramUsageMode::Unlimited) {
             // Account for resolution scaling in memory limits
             const size_t normal_memory = 6_GiB;
             const size_t scaler_memory = 1_GiB * Settings::values.resolution_info.ScaleUp(1);
             device_access_memory = std::min<u64>(device_access_memory, normal_memory + scaler_memory);
         }
+    }
+    if (vram_target != 0) {
+        device_access_memory = (std::min)(device_access_memory, vram_target);
     }
 }
 
