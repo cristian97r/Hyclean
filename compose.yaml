@@ -35,6 +35,33 @@ x-build: &build
     ENABLE_QT_TRANSLATION: ${ENABLE_QT_TRANSLATION:-OFF}
 
 services:
+  linux-release-trial:
+    profiles: [release-trial]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: linux-release-env
+      args:
+        TRIAL_UID: ${TRIAL_UID:-1000}
+        TRIAL_GID: ${TRIAL_GID:-1000}
+    environment:
+      GIT_COMMIT: ${GIT_COMMIT:-}
+      GIT_REFSPEC: ${GIT_REFSPEC:-}
+      BUILD_TAG: ${BUILD_TAG:-}
+      UPDATE_REPO: ${UPDATE_REPO:-}
+      CMAKE_BUILD_PARALLEL_LEVEL: ${BUILD_JOBS:-4}
+      CCACHE_DIR: /cache/ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 3000M
+    volumes:
+      - type: bind
+        source: ./.cache/linux-release-trial
+        target: /cache
+      - type: bind
+        source: ./builds/linux-release-trial
+        target: /out
+
   linux-amd64:
     platform: linux/amd64
     build:

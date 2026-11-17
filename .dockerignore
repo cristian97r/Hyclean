@@ -23,5 +23,7 @@
 !LICENSES
 !LICENSES/**
 !tools
+!tools/fsr4-vk
+!tools/fsr4-vk/build.sh
 !tools/windows
 !tools/windows/**

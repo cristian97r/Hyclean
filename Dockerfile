@@ -194,6 +194,41 @@ RUN --mount=type=cache,target=/src/.cache/cpm \
     && rm -rf /src/build-tests
 CMD ["sh", "-c", "lichii-tests ${TESTS:-}"]
 
+# Standard Linux release trial; keep Ubuntu 24.04's glibc baseline.
+FROM ubuntu:24.04 AS linux-release-env
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        autoconf automake binutils build-essential ca-certificates ccache curl desktop-file-utils \
+        file git glslang-tools libasound2-dev libavcodec-dev libavfilter-dev libboost-context-dev \
+        libboost-dev libboost-fiber-dev libglu1-mesa-dev libopus-dev libpulse-dev libssl-dev \
+        libswscale-dev libtool libudev-dev libusb-1.0-0-dev libva-dev libvdpau-dev libvulkan-dev \
+        libwayland-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+        libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 \
+        llvm mesa-common-dev nasm ninja-build patch pkg-config python3-venv python3-zstandard \
+        qt6-base-private-dev qt6-charts-dev qt6-tools-dev spirv-headers spirv-tools unzip \
+        wayland-protocols zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Noble ships CMake 3.28; the project needs 3.31. Keep system python3 for fsr4-vk's zstandard.
+ENV QT_ROOT_DIR=/opt/Qt/6.8.3/gcc_64
+RUN python3 -m venv /opt/release-tools \
+    && /opt/release-tools/bin/pip install --no-cache-dir cmake==3.31.10 aqtinstall==3.3.0 \
+    && ln -s /opt/release-tools/bin/cmake /usr/local/bin/cmake \
+    && /opt/release-tools/bin/aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtcharts -O /opt/Qt \
+    && test -f "$QT_ROOT_DIR/lib/cmake/Qt6Charts/Qt6ChartsConfig.cmake"
+
+ENV PATH="${QT_ROOT_DIR}/bin:${PATH}" CMAKE_PREFIX_PATH=${QT_ROOT_DIR} LD_LIBRARY_PATH=${QT_ROOT_DIR}/lib \
+    CC=gcc CXX=g++ HOME=/tmp/lichii-home LANG=C.UTF-8
+ARG TRIAL_UID=1000
+ARG TRIAL_GID=1000
+RUN install -d -o "$TRIAL_UID" -g "$TRIAL_GID" /src
+WORKDIR /src
+COPY --chown=${TRIAL_UID}:${TRIAL_GID} . .
+USER ${TRIAL_UID}:${TRIAL_GID}
+CMD ["bash", "docker/scripts/build-linux-release.sh"]
+
 # The shared JIT code cache test under ThreadSanitizer, run by the linux-tsan service. Everything
 # it links (common, dynarmic) is instrumented; no other target is built.
 FROM linux-base AS linux-tsan
