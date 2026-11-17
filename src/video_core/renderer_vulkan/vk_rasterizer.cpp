@@ -3445,6 +3445,12 @@ bool RasterizerVulkan::OcarinaTemporalEnabled() const {
         Settings::values.ocarina_fsr.GetValue() && !Fsr3Upscaler::IsSupported(device)) {
         LOG_WARNING(Render_Vulkan, "Ocarina FSR 3.1 unsupported on this device; using native upscale");
     }
+    if (*oot_backend != VideoCommon::OcarinaUpscaleBackend::Native &&
+        Settings::values.resolution_info.active) {
+        LOG_WARNING(Render_Vulkan, "Ocarina {}: resolution scale is above 1x, so the game's own "
+                    "upscale draws instead; set Resolution to 1X",
+                    *oot_backend == VideoCommon::OcarinaUpscaleBackend::Fsr ? "FSR" : "DLSS");
+    }
     return *oot_backend != VideoCommon::OcarinaUpscaleBackend::Native;
 }
 
@@ -3706,7 +3712,10 @@ bool RasterizerVulkan::TryOcarinaUpscale(const ComputePipeline& pipeline, u64 na
     }
     auto& depth = texture_cache.GetImageView(images[0].id);
     const auto* backing = depth.BackingImage();
-    if (!backing || depth.IsRescaled() || depth.format != VideoCore::Surface::PixelFormat::D32_FLOAT ||
+    if (depth.IsRescaled()) {
+        return fail("resolution scale above 1x; DLSS and FSR replace the game's upscale only at 1x");
+    }
+    if (!backing || depth.format != VideoCore::Surface::PixelFormat::D32_FLOAT ||
         depth.range != VideoCommon::SubresourceRange{} || backing->info.num_samples != 1) {
         return fail("unsupported scene depth");
     }

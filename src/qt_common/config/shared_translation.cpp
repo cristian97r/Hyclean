@@ -197,7 +197,8 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, ocarina_fsr, tr("Use AMD FSR 3.1 upscaling in Ocarina of Time"),
            tr("Replaces Ocarina of Time's native upscaler using scene depth and camera motion. "
               "Works on any supported Vulkan GPU. NVIDIA DLSS takes precedence when enabled and "
-              "available. RCAS Sharpness controls sharpening. Takes effect when a game starts."));
+              "available. RCAS Sharpness controls sharpening. Needs Resolution at 1X: above 1X "
+              "the game's own upscaler is used. Takes effect when a game starts."));
 #if defined(__linux__) && !defined(__ANDROID__)
     INSERT(Settings, amd_fsr4, tr("Use FSR 4 (fsr4-vk community Vulkan port) in place of FSR 3.1"),
            tr("Uses fsr4-vk, a community Vulkan port of AMD's ML-based FSR 4.1.1 that Lichii's "
@@ -220,7 +221,8 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "the NVIDIA app has downloaded it; Lichii does not ship NVIDIA's files. Use the "
               "download button below.\nIn Fire Emblem: Fortune's Weave it replaces the game's "
               "DLSS while \"Use the game's own DLSS\" is off.\nIn The Legend of Zelda: Ocarina of Time it replaces the game's "
-              "upscaler at 1x resolution scale.\nThe window adapting filter (the FSR 1, Bilinear "
+              "upscaler only with Resolution at 1X; above 1X the game's own upscaler is used and the "
+              "DLSS modes change nothing.\nThe window adapting filter (the FSR 1, Bilinear "
               "and similar button in the status bar) is separate and runs after DLSS. While DLSS "
               "runs, the status bar shows DLSS, its mode and its preset. If DLSS fails, it stays "
               "off until the game restarts and the log says why.\nTakes effect when a game "
