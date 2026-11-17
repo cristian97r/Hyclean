@@ -1,4 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Eden Discord
-    url: https://discord.gg/HstXbPch7X
+  - name: Settings guide (read this first for low frame rate)
+    url: https://github.com/tasarren/Lichii#readme
+    about: Recommended settings for each kind of PC, and fixes for stutter, slow play and crashes.

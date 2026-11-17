@@ -1,0 +1,126 @@
+name: Performance report
+description: Low frame rate or lower than an older build, with nothing broken on screen
+title: "[Performance] "
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you report, try the settings guide for your PC in the [README](https://github.com/tasarren/Lichii#readme). Most low frame rates come from settings or a slow CPU.
+        Reports that say "it worked better before" help most when they give both builds and the same place in the game.
+
+  - type: input
+    id: build
+    attributes:
+      label: Lichii build
+      description: "The release you downloaded (for example `next build 2`), or the first line of eden_log.txt."
+      placeholder: "e.g. next build 2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - "The Legend of Zelda: Ocarina of Time"
+        - Mario Kart World
+        - Donkey Kong Bananza
+        - Kirby Air Riders
+        - Pokémon Pokopia
+        - Other / not listed
+    validations:
+      required: true
+
+  - type: textarea
+    id: places
+    attributes:
+      label: Where in the game, and what frame rate
+      description: One line per place. Give the lowest and the usual frame rate you see there, standing still if you can.
+      placeholder: "Market (castle town) fountain: 45 low, 55 usual\nHyrule Field: 30 low, 40 usual\nDungeons: 60"
+    validations:
+      required: true
+
+  - type: textarea
+    id: compare
+    attributes:
+      label: Compared with another build or emulator (optional)
+      description: The other build and its frame rate in the same places, on the same PC and settings.
+      placeholder: "next build 1: Market 50 / Hyrule Field 40"
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+      placeholder: "e.g. Ryzen 7 5700X / Core i5-12400F / Steam Deck"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ram
+    attributes:
+      label: System memory (RAM)
+      options:
+        - 8 GB or less
+        - 16 GB
+        - 32 GB
+        - 64 GB or more
+    validations:
+      required: true
+
+  - type: input
+    id: gpu_driver
+    attributes:
+      label: GPU model, video memory and driver version
+      placeholder: "e.g. RTX 4060 Ti 8 GB, NVIDIA 581.57 / RX 6600 8 GB, Adrenalin 25.10.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+        - SteamOS
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: preset
+    attributes:
+      label: Settings
+      description: Which preset from the README settings guide you used, if any.
+      options:
+        - 4 GB graphics card preset
+        - Low preset
+        - Mid preset
+        - High preset
+        - My own settings (list them below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings you changed
+      description: Anything not at its default or not in the preset. Render scale, frame rate limit, upscaler and GPU Mode matter most.
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: |
+        Drag and drop eden_log.txt here (File → Open Lichii Folders → Log Folder), from the session you measured, before you start Lichii again. It shows your settings and hardware, so we can tell what limits the frame rate.
+      placeholder: Drop eden_log.txt here
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot (optional)
+      description: A screenshot with a frame rate overlay (MangoHud, RivaTuner, Steam overlay) in the place you measured helps.
