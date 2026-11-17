@@ -306,6 +306,35 @@ void DeviceMemoryManager<Traits>::HintCold(DAddr address, size_t size) {
 }
 
 template <typename Traits>
+bool DeviceMemoryManager<Traits>::IsHole(DAddr address, size_t size) const {
+    constexpr DAddr address_space_end = DAddr{1} << AS_BITS;
+    if (size == 0 || address >= address_space_end || size > address_space_end - address) {
+        return false;
+    }
+    // Physical runs, checked as they end: one lseek per run.
+    u64 run_begin = 0;
+    u64 run_size = 0;
+    const size_t page_end = Common::DivCeil(address + size, Memory::LICHII_PAGESIZE);
+    for (size_t page = address >> Memory::LICHII_PAGEBITS; page < page_end; ++page) {
+        const u32 compressed = tracked_entries[page].compressed_physical_ptr;
+        if (compressed == 0) {
+            return false;
+        }
+        const u64 physical = u64{compressed - 1} << Memory::LICHII_PAGEBITS;
+        if (run_size != 0 && run_begin + run_size == physical) {
+            run_size += Memory::LICHII_PAGESIZE;
+            continue;
+        }
+        if (run_size != 0 && !device_memory_ptr->buffer.IsHole(run_begin, run_size)) {
+            return false;
+        }
+        run_begin = physical;
+        run_size = Memory::LICHII_PAGESIZE;
+    }
+    return device_memory_ptr->buffer.IsHole(run_begin, run_size);
+}
+
+template <typename Traits>
 void DeviceMemoryManager<Traits>::BindInterface(DeviceInterface* device_inter_) {
     device_inter = device_inter_;
 }

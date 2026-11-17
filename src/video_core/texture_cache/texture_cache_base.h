@@ -815,6 +815,7 @@ private:
     struct {
         double read_ms{};
         double untile_ms{};
+        bool hole{}; ///< Guest memory was a hole: cleared, not uploaded
     } upload_trace;
     Tegra::Texture::UnswizzleWorker unswizzle_worker;
 

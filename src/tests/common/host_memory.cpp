@@ -364,4 +364,18 @@ TEST_CASE("HostMemory: Backing residency and dirty granules", "[common]") {
     REQUIRE(dirty[2] != 0);
     REQUIRE(dirty[1] == 0);
 }
+
+TEST_CASE("HostMemory: Only backing nobody wrote is a hole", "[common]") {
+    HostMemory mem(BACKING_SIZE, VIRTUAL_SIZE);
+    REQUIRE(mem.IsHole(0x200000, 0x600000));
+
+    // 2 MiB apart, so a huge shmem page for the write stays inside [0x400000, 0x600000).
+    mem.BackingBasePointer()[0x400000] = 1;
+    CHECK_FALSE(mem.IsHole(0x200000, 0x600000)); // data in the middle
+    CHECK_FALSE(mem.IsHole(0x400000, 0x1000));
+    CHECK(mem.IsHole(0x200000, 0x200000));       // ends where the data starts
+    CHECK(mem.IsHole(0x600000, 0x200000));       // starts after it
+    CHECK_FALSE(mem.IsHole(BACKING_SIZE - 0x1000, 0x2000)); // past the backing
+    CHECK_FALSE(mem.IsHole(0x100000, 0));
+}
 #endif

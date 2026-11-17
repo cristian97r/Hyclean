@@ -2788,14 +2788,14 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
         LOG_WARNING(HW_GPU,
                     "TCTRACE upload gpu={:#x} fmt={} {}x{}x{} lv={} ly={} guest={}KiB host={}KiB "
                     "ms={:.2f} staging={:.2f} read={:.2f} untile={:.2f} faults={} chunked={} "
-                    "frame={}",
+                    "skipped={} frame={}",
                     image.gpu_addr, static_cast<u32>(image.info.format), image.info.size.width,
                     image.info.size.height, image.info.size.depth, image.info.resources.levels,
                     image.info.resources.layers, image.guest_size_bytes / 1024,
                     MapSizeBytes(image) / 1024, Ms(TraceClock::now() - trace_begin).count(),
                     Ms(trace_staged - trace_begin).count(), upload_trace.read_ms,
                     upload_trace.untile_ms, Common::GetProcessPageFaults() - trace_faults, chunked,
-                    frame_tick);
+                    upload_trace.hole ? "hole" : "no", frame_tick);
     }
     // The host GPU has its own copy now and the guest rarely reads this memory again: TickFrame
     // marks it cold, so the OS pages it out before anything else when it needs RAM (title 1
@@ -2826,6 +2826,17 @@ bool TextureCache<P>::UploadInChunks(Image& image) {
     if (True(image.flags & excluded) || image.info.type != ImageType::e2D ||
         MapSizeBytes(image) < min_size) {
         return false;
+    }
+    // Memory the guest never wrote (a hole of the backing memfd) reads as zeros: clear instead of
+    // reading it, which also gave every page RAM (Ocarina of Time: a 288 MiB depth image per scene).
+    if (!Tegra::Nx2MayBeGpuWritten(image.cpu_addr, image.guest_size_bytes) &&
+        device_memory.IsHole(image.cpu_addr, image.guest_size_bytes)) {
+        if constexpr (requires { runtime.ClearImage(image); }) {
+            if (runtime.ClearImage(image)) {
+                upload_trace.hole = true;
+                return true;
+            }
+        }
     }
     for (u64 offset = 0; offset < image.guest_size_bytes; offset += chunk_size) {
         const std::array range{

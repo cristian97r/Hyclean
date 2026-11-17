@@ -60,6 +60,10 @@ public:
     /// Only while the host is short of RAM (Common::IsHostLowOnMemory).
     void HintCold(DAddr address, size_t size);
 
+    /// True when every page of [address, address + size) is mapped and its backing is a hole
+    /// (Common::HostMemory::IsHole): the range reads as zeros. False for unmapped pages.
+    [[nodiscard]] bool IsHole(DAddr address, size_t size) const;
+
     DAddr Allocate(size_t size);
     void AllocateFixed(DAddr start, size_t size);
     void Free(DAddr start, size_t size);

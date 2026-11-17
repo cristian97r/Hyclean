@@ -19,6 +19,7 @@
 #define _GNU_SOURCE
 #endif
 #include <boost/icl/interval_set.hpp>
+#include <cerrno>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -604,6 +605,19 @@ public:
         return fd >= 0 &&
                fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, static_cast<off_t>(offset),
                          static_cast<off_t>(length)) == 0;
+    }
+
+    bool IsHole(size_t offset, size_t length) const {
+        if (fd < 0 || length == 0) {
+            return false;
+        }
+        errno = 0;
+        const off_t data = lseek(fd, static_cast<off_t>(offset), SEEK_DATA);
+        // ENXIO: no data at or after offset. Any other error: unknown, so not a hole.
+        if (data < 0) {
+            return errno == ENXIO;
+        }
+        return static_cast<size_t>(data) >= offset + length;
     }
 #endif
 
@@ -1352,6 +1366,14 @@ std::vector<u8> HostMemory::BackingResidency() const {
     return out;
 #else
     return {};
+#endif
+}
+
+bool HostMemory::IsHole(size_t offset, size_t length) const {
+#if defined(__linux__)
+    return impl && offset + length <= backing_size && impl->IsHole(offset, length);
+#else
+    return false;
 #endif
 }
 
