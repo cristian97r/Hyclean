@@ -2774,8 +2774,19 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
     const u64 trace_faults = tc_trace ? Common::GetProcessPageFaults() : 0;
     auto trace_staged = trace_begin;
     upload_trace = {};
-    const bool chunked = UploadInChunks(image);
-    if (!chunked) {
+    // Memory the guest never wrote (a hole of the backing memfd) reads as zeros: clear instead of
+    // reading it, which also gave every page RAM (Ocarina of Time: a 288 MiB depth image and the
+    // 64 slices of a 16 MiB volume per scene). Slices overlap, so each must skip before a read
+    // faults the shared pages in.
+    if (image.guest_size_bytes >= 1_MiB &&
+        !Tegra::Nx2MayBeGpuWritten(image.cpu_addr, image.guest_size_bytes) &&
+        device_memory.IsHole(image.cpu_addr, image.guest_size_bytes)) {
+        if constexpr (requires { runtime.ClearImage(image); }) {
+            upload_trace.hole = runtime.ClearImage(image);
+        }
+    }
+    const bool chunked = !upload_trace.hole && UploadInChunks(image);
+    if (!upload_trace.hole && !chunked) {
         auto staging = runtime.UploadStagingBuffer(MapSizeBytes(image));
         if (tc_trace) {
             trace_staged = TraceClock::now();
@@ -2826,17 +2837,6 @@ bool TextureCache<P>::UploadInChunks(Image& image) {
     if (True(image.flags & excluded) || image.info.type != ImageType::e2D ||
         MapSizeBytes(image) < min_size) {
         return false;
-    }
-    // Memory the guest never wrote (a hole of the backing memfd) reads as zeros: clear instead of
-    // reading it, which also gave every page RAM (Ocarina of Time: a 288 MiB depth image per scene).
-    if (!Tegra::Nx2MayBeGpuWritten(image.cpu_addr, image.guest_size_bytes) &&
-        device_memory.IsHole(image.cpu_addr, image.guest_size_bytes)) {
-        if constexpr (requires { runtime.ClearImage(image); }) {
-            if (runtime.ClearImage(image)) {
-                upload_trace.hole = true;
-                return true;
-            }
-        }
     }
     for (u64 offset = 0; offset < image.guest_size_bytes; offset += chunk_size) {
         const std::array range{
