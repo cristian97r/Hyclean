@@ -33,8 +33,16 @@ jobs:
           key: compose-trial-gcc-noble-v1-${{ github.sha }}
           restore-keys: compose-trial-gcc-noble-v1-
 
+      - name: Free disk before Compose
+        run: df -h . /var/lib/docker
+
       - name: Build and check both release packages
+        id: compose
         run: bash docker/scripts/linux-release-trial.sh
+
+      - name: Free disk after Compose
+        if: always() && steps.compose.outcome != 'skipped'
+        run: df -h . /var/lib/docker
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

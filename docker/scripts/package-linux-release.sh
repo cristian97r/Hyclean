@@ -31,8 +31,12 @@ cd "$work"
 for tool in linuxdeploy linuxdeploy-plugin-qt; do
     image="$tool-x86_64.AppImage"
     curl -fsSL --retry 3 -o "$image" "https://github.com/linuxdeploy/$tool/releases/download/continuous/$image"
-    chmod +x "$image"
 done
+printf '%s\n' \
+    'df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5  linuxdeploy-x86_64.AppImage' \
+    'cfc1055b2b9dbc08412b579f20990b7b41a17b61beaa5847dc9477c96c9e9617  linuxdeploy-plugin-qt-x86_64.AppImage' |
+    sha256sum --check --strict
+chmod +x linuxdeploy{,-plugin-qt}-x86_64.AppImage
 
 name="lichii-$GIT_COMMIT-linux-x86_64"
 export ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1
