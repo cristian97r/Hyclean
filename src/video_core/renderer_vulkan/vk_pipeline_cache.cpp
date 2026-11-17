@@ -1143,6 +1143,22 @@ void OrderComputeTranslations(std::vector<CachedComputeTranslation>& candidates)
     }
     candidates = std::move(ordered);
 }
+
+/// The boot load and prebuild free GBs of translation data that glibc keeps in its arenas; hand
+/// the free pages back. Off the GPU thread: a trim walks every arena.
+// ponytail: one trim per boot; later area loads keep their slack until a periodic trim exists.
+void TrimAfterLoad([[maybe_unused]] std::string_view after) {
+#ifdef __GLIBC__
+    std::thread([after] {
+        const auto start = std::chrono::steady_clock::now();
+        const int released = malloc_trim(0);
+        LOG_INFO(Render_Vulkan, "malloc_trim after the {}: released={} in {} ms", after, released,
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now() - start)
+                     .count());
+    }).detach();
+#endif
+}
 } // Anonymous namespace
 
 bool PipelineCache::StaleNullPointerSlot(const ComputePipelineCacheEntry& entry) const {
@@ -2024,6 +2040,10 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
     if (compact) {
         scheduled_prebuild->AfterTranslations([this] { cache_v2->Compact(); });
     }
+    // Nothing deferred: TickFrame never sees a prebuild finish, so trim at the end of the load.
+    if (deferred_pipelines == 0) {
+        TrimAfterLoad("boot load");
+    }
 }
 
 namespace {
@@ -2491,21 +2511,7 @@ void PipelineCache::TickFrame() {
                      outcome->built, outcome->failed, outcome->taken_unfinished,
                      outcome->unclaimed);
             prebuild_load_begin.reset();
-#ifdef __GLIBC__
-            // The boot load and prebuild free GBs of translation data that glibc keeps in its
-            // arenas; hand the free pages back. Off the GPU thread: a trim walks every arena.
-            // ponytail: one trim per boot; later area loads keep their slack until a periodic
-            // trim exists.
-            std::thread([] {
-                const auto start = std::chrono::steady_clock::now();
-                const int released = malloc_trim(0);
-                LOG_INFO(Render_Vulkan, "malloc_trim after the prebuild: released={} in {} ms",
-                         released,
-                         std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() - start)
-                             .count());
-            }).detach();
-#endif
+            TrimAfterLoad("prebuild");
         }
     }
 }
