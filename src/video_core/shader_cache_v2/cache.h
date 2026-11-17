@@ -77,12 +77,18 @@ public:
     /// code only when a later boot load does
     void KeepStalePrograms();
 
+    /// Compacts the log (CacheWriter::Compact); the loaded programs follow their records
+    void Compact();
+
 private:
-    /// A record of this build's lowering: its code, and the check of its inputs (ProgramCheck)
-    /// instead of the native instructions, which the capture holds anyway
+    /// A record of this build's lowering: where it is in the log, read again on a hit, and the
+    /// check of its inputs (ProgramCheck) instead of the native instructions, which the capture
+    /// holds anyway. Holding the decoded code for every record cost ~23 KiB each (185 MiB in
+    /// Ocarina of Time), most of it for programs no pipeline asked for again.
     struct LoadedProgram {
-        u128 check;
-        std::shared_ptr<const LoweredNativeCode> code;
+        u128 check{};
+        std::atomic<u64> offset{}; ///< Moved by a compaction (Compact) while lookups run
+        u64 payload_size{};
     };
 
     struct ProgramCounts {
@@ -94,9 +100,11 @@ private:
     std::mutex mutex;
     std::unordered_map<u64, u64> programs; ///< Record key -> lowering stamp
     bool keep_stale{};                     ///< Under mutex
-    /// Written by LoadPrograms only before `loaded_ready` is set, then never changed
+    /// Written by LoadPrograms only before `loaded_ready` is set, then only offsets change
     std::unordered_map<u64, LoadedProgram> loaded;
     std::atomic<bool> loaded_ready{};
+    std::atomic<u64> rereads_ok{};     ///< Hits whose record read back
+    std::atomic<u64> rereads_failed{}; ///< Hits whose record was not there: lowered again
     std::array<ProgramCounts, static_cast<size_t>(ProgramLookup::Count)> counts;
     CacheWriter writer;
 };

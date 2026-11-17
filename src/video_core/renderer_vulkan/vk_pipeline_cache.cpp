@@ -2022,7 +2022,7 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
         await_older();
     }
     if (compact) {
-        scheduled_prebuild->AfterTranslations([this] { cache_v2->Writer().Compact(); });
+        scheduled_prebuild->AfterTranslations([this] { cache_v2->Compact(); });
     }
 }
 

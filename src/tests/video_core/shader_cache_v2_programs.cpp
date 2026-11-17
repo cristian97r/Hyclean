@@ -3,11 +3,13 @@
 
 // Shader cache v2: native programs taken from Program records instead of lowered again.
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -290,6 +292,48 @@ TEST_CASE("Shader cache v2: a program from its record is the code a lowering mak
             V2::ProgramLookup::Miss);
     REQUIRE(cache.FindProgram(KeyInputs(programs[0], other_header, traps)).lookup ==
             V2::ProgramLookup::Miss);
+
+    // Hits read their record again: after a rewrite moved the records (a compaction), a moved
+    // one is lowered again, never taken from another record's bytes.
+    std::ranges::reverse(records);
+    std::filesystem::remove(file);
+    WriteLog(file, records);
+    size_t moved_misses = 0;
+    for (size_t i = 0; i < programs.size(); ++i) {
+        INFO(programs[i].name);
+        const auto sph = programs[i].Header();
+        const auto program_traps = programs[i].Traps();
+        const V2::FoundProgram found =
+            cache.FindProgram(KeyInputs(programs[i], sph, program_traps));
+        if (found.lookup == V2::ProgramLookup::Hit) {
+            RequireSameCode(*found.code, *fresh[i]);
+        } else {
+            ++moved_misses;
+        }
+    }
+    REQUIRE(moved_misses > 0);
+
+    // A compaction moves the records under a cache that loaded them: every hit follows.
+    std::filesystem::remove(file);
+    const V2::ProgramRecord dead = RecordOf(programs[4], *fresh[4]);
+    WriteLog(file, std::span{&dead, 1});
+    WriteLog(file, records);
+    const V2::LogFile with_dead = V2::ReadLogFile(file);
+    REQUIRE(with_dead.parsed.stats.superseded == 1);
+    V2::Cache compacting{file};
+    compacting.LoadPrograms(with_dead.parsed.live);
+    compacting.Compact();
+    REQUIRE(compacting.Writer().Drain(5s));
+    REQUIRE(compacting.Writer().Stats().compactions == 1);
+    for (size_t i = 0; i < programs.size(); ++i) {
+        INFO(programs[i].name);
+        const auto sph = programs[i].Header();
+        const auto program_traps = programs[i].Traps();
+        const V2::FoundProgram found =
+            compacting.FindProgram(KeyInputs(programs[i], sph, program_traps));
+        REQUIRE(found.lookup == V2::ProgramLookup::Hit);
+        RequireSameCode(*found.code, *fresh[i]);
+    }
 }
 
 TEST_CASE("Shader cache v2: a record of another lowering is stale and never used",
@@ -357,9 +401,13 @@ TEST_CASE("Shader cache v2: a damaged program record never gives code",
     const auto sph = program.Header();
     const auto traps = program.Traps();
     TempDir temp;
+    // A hit reads its record again from the cache's file, so the bytes go there.
     const auto find = [&](std::span<const u8> bytes) {
+        const auto file = temp.path / "cache.bin";
+        std::ofstream{file, std::ios::binary | std::ios::trunc}.write(
+            reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         const V2::ParsedLog parsed = V2::ParseLog(bytes);
-        V2::Cache cache{temp.path / "unused.bin"};
+        V2::Cache cache{file};
         cache.LoadPrograms(parsed.live);
         return std::pair{parsed.stats, cache.FindProgram(KeyInputs(program, sph, traps))};
     };
@@ -508,8 +556,8 @@ TEST_CASE("Shader cache v2: compute environments take recorded programs with eve
     };
     auto recorded_traps = fixture.Environment(traps.inputs.native_code_address, &cache);
     auto recorded_texture = fixture.Environment(texture.inputs.native_code_address, &cache);
-    REQUIRE(recorded_traps.LoweredNative() == loaded(traps));
-    REQUIRE(recorded_texture.LoweredNative() == loaded(texture));
+    RequireSameCode(*recorded_traps.LoweredNative(), *loaded(traps));
+    RequireSameCode(*recorded_texture.LoweredNative(), *loaded(texture));
     RequireSameCode(*recorded_traps.LoweredNative(), *lowered_traps.LoweredNative());
     RequireSameCode(*recorded_texture.LoweredNative(), *lowered_texture.LoweredNative());
     REQUIRE(recorded_traps.Analyze() == lowered_traps.Analyze());
@@ -538,6 +586,6 @@ TEST_CASE("Shader cache v2: compute environments take recorded programs with eve
         (void)VideoCore::Nx2Debug::SetRejected(hashes, false);
     }
     REQUIRE_FALSE(VideoCore::Nx2Debug::AnyRejected());
-    REQUIRE(fixture.Environment(texture.inputs.native_code_address, &cache).LoweredNative() ==
-            texture_code);
+    RequireSameCode(*fixture.Environment(texture.inputs.native_code_address, &cache).LoweredNative(),
+                    *texture_code);
 }

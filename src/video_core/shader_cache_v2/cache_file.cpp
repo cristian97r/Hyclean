@@ -214,10 +214,17 @@ WriteResult CompactLog(const std::filesystem::path& file, const CompactLimit& li
         kept.resize(count);
         std::ranges::sort(kept, {}, &LogRecord::offset);
     }
+    std::vector<std::pair<const LogRecord*, u64>> moved;
+    moved.reserve(kept.size());
     for (const LogRecord* record : kept) {
+        moved.emplace_back(record, bytes.size());
         EncodeRecord(bytes, record->kind, record->key, record->payload, record->flags);
     }
-    return ReplaceFile(file, bytes);
+    const WriteResult result = ReplaceFile(file, bytes);
+    if (result == WriteResult::Written && limit.moved) {
+        limit.moved(moved);
+    }
+    return result;
 }
 
 // Out of line so that a caller does not need the complete type of the lock it holds

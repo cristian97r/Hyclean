@@ -6,6 +6,7 @@
 #include "video_core/native_lowering.h"
 #include "video_core/nx2_stutter_trace.h"
 #include "video_core/shader_cache_v2/cache.h"
+#include "video_core/shader_cache_v2/cache_file.h"
 #include "video_core/shader_cache_v2/cache_format.h"
 #include "video_core/shader_cache_v2/records.h"
 
@@ -34,9 +35,11 @@ Cache::~Cache() {
     LOG_INFO(Shader,
              "Shader cache v2 programs: {} from records ({:.1f} us each to capture and look up), "
              "{} lowered ({} without a record, {} with a stale one; {:.1f} us each to capture and "
-             "look up, then {:.1f} us to lower)",
+             "look up, then {:.1f} us to lower); rereads {} read, {} failed",
              hits, us_each(load(ProgramLookup::Hit, &ProgramCounts::lookup_ns), hits), lowered,
-             misses, stale, us_each(lowered_lookup_ns, lowered), us_each(lowering_ns, lowered));
+             misses, stale, us_each(lowered_lookup_ns, lowered), us_each(lowering_ns, lowered),
+             rereads_ok.load(std::memory_order_relaxed),
+             rereads_failed.load(std::memory_order_relaxed));
 }
 
 void Cache::AddProgram(u64 key, u64 lowering_stamp) {
@@ -65,7 +68,10 @@ void Cache::LoadPrograms(std::span<const LogRecord> live) {
             continue;
         }
         const u128 check = ProgramCheck(ProgramKeyInputsOf(*record));
-        table.insert_or_assign(entry.key, LoadedProgram{check, TakeProgramCode(*record)});
+        LoadedProgram& program = table[entry.key];
+        program.check = check;
+        program.offset.store(entry.offset, std::memory_order_relaxed);
+        program.payload_size = entry.payload.size();
     }
     loaded = std::move(table);
     loaded_ready.store(true, std::memory_order_release);
@@ -76,7 +82,27 @@ FoundProgram Cache::FindProgram(const ProgramKeyInputs& inputs) {
     if (loaded_ready.load(std::memory_order_acquire)) {
         if (const auto it = loaded.find(key);
             it != loaded.end() && it->second.check == ProgramCheck(inputs)) {
-            return {ProgramLookup::Hit, it->second.code};
+            // A lookup while a compaction renames the file may read the old offset there and
+            // lower again; the offset follows right after.
+            const std::optional<std::vector<u8>> payload = ReadRecordPayload(
+                writer.File(), RecordKind::Program, key,
+                it->second.offset.load(std::memory_order_relaxed), it->second.payload_size);
+            std::optional<ProgramRecord> record =
+                payload ? DecodeProgram(*payload) : std::nullopt;
+            if (record) {
+                // The game is usually killed, not closed: count as it goes.
+                if (const u64 ok = rereads_ok.fetch_add(1, std::memory_order_relaxed) + 1;
+                    ok % 1024 == 0) {
+                    LOG_INFO(Shader, "Shader cache v2 program rereads: {} read, {} failed", ok,
+                             rereads_failed.load(std::memory_order_relaxed));
+                }
+                return {ProgramLookup::Hit, TakeProgramCode(*record)};
+            }
+            const u64 failed = rereads_failed.fetch_add(1, std::memory_order_relaxed) + 1;
+            LOG_WARNING(Shader,
+                        "Shader cache v2: program {:016X} is no longer where the boot load read "
+                        "it; lowered again ({} rereads failed, {} read)",
+                        key, failed, rereads_ok.load(std::memory_order_relaxed));
         }
     }
     std::scoped_lock lock{mutex};
@@ -84,6 +110,21 @@ FoundProgram Cache::FindProgram(const ProgramKeyInputs& inputs) {
     return {it != programs.end() && it->second != LoweringStamp() ? ProgramLookup::Stale
                                                                   : ProgramLookup::Miss,
             nullptr};
+}
+
+void Cache::Compact() {
+    writer.Compact({.moved = [this](std::span<const std::pair<const LogRecord*, u64>> moved) {
+        if (!loaded_ready.load(std::memory_order_acquire)) {
+            return;
+        }
+        for (const auto& [record, offset] : moved) {
+            const auto it = loaded.find(record->key);
+            if (record->kind == RecordKind::Program && it != loaded.end() &&
+                it->second.offset.load(std::memory_order_relaxed) == record->offset) {
+                it->second.offset.store(offset, std::memory_order_relaxed);
+            }
+        }
+    }});
 }
 
 void Cache::CountProgram(ProgramLookup lookup, u64 lookup_ns, u64 lowering_ns) {

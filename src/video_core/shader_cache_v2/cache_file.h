@@ -65,6 +65,9 @@ struct CompactLimit {
     u64 max_bytes{~u64{0}};
     u64 target_bytes{~u64{0}};
     std::function<u32(const LogRecord&)> rank;
+    /// Called once the rewritten log replaced the file, with each kept record (as the old file had
+    /// it) and its offset in the new one, so that readers of records by offset follow them
+    std::function<void(std::span<const std::pair<const LogRecord*, u64>> moved)> moved;
 };
 
 /// Rewrites the log with only its live records: to a temporary file that is committed to the disk
