@@ -61,10 +61,15 @@ public:
         std::optional<Camera> camera;
     };
 
-    /// Throws vk::Exception when Streamline has no DLSS for this device.
+    /// Throws vk::Exception when this device has no DLSS (Streamline on Windows,
+    /// the Lichii DLSS module on Linux).
     explicit DlssUpscaler(const Device& device, Scheduler& scheduler,
                                     MemoryAllocator& memory_allocator);
     ~DlssUpscaler();
+
+    /// Whether DLSS can run at all: the platform's backend, once per process.
+    /// Records why it cannot, for the settings panel.
+    static bool Available(const Device& device);
 
     /// Records one evaluation into the output image (RGBA16F at the upscale size, GENERAL
     /// layout). Returns false when DLSS can't run, so the caller can fall back to FSR 3.1.
@@ -97,9 +102,17 @@ private:
     const Device& device;
     Scheduler& scheduler;
     MemoryAllocator& memory_allocator;
+#ifdef _WIN32
     void* set_options{}; ///< slDLSSSetOptions
     void* get_state{};   ///< slDLSSGetState
     void* get_optimal_settings{};
+#else
+    u64 ngx_feature{};                 ///< The NGX feature handle, 0 while absent or refused.
+    std::atomic<bool> create_refused{}; ///< Set on the worker; the caller retries on a change.
+    std::atomic<u32> eval_failures{};  ///< Consecutive evaluation failures of the feature.
+    bool feature_recreated{};
+    bool depth_inverted_input = true;
+#endif
     VkExtent2D render_extent{};
     VkExtent2D upscale_extent{};
     bool hdr_input = true;

@@ -74,7 +74,7 @@ public:
 #endif
     }
 
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     [[nodiscard]] VideoCore::DlssStatus GetDlssStatus() const override;
 #endif
 

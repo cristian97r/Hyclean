@@ -8,6 +8,9 @@
 #include "common/scm_rev.h"
 #include "ui_aboutdialog.h"
 #include "lichii/about_dialog.h"
+#ifdef EGLANTINE_DLSS_NGX
+#include "video_core/renderer_vulkan/vk_ngx_dlss.h"
+#endif
 
 AboutDialog::AboutDialog(QWidget* parent)
     : QDialog(parent), ui{std::make_unique<Ui::AboutDialog>()} {
@@ -26,6 +29,13 @@ AboutDialog::AboutDialog(QWidget* parent)
     const auto lichii_build_version = override_build.empty() ? lichii_build : override_build;
 
     ui->setupUi(this);
+#ifdef EGLANTINE_DLSS_NGX
+    // NVIDIA's DLSS terms ask for the credit while its code runs through the module.
+    if (Vulkan::Ngx::Probe().setup == Vulkan::Ngx::Setup::Ready) {
+        ui->labelAbout->setText(ui->labelAbout->text() +
+                                QStringLiteral("\n\nUses NVIDIA DLSS, NVIDIA Corporation."));
+    }
+#endif
     // Try and request the icon from Qt theme (Linux?)
     const QIcon lichii_logo = QIcon::fromTheme(QStringLiteral("io.github.zortos293.lichii"),
                                            QIcon(QStringLiteral(":/img/lichii.ico")));

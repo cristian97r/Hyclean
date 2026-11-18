@@ -1131,7 +1131,7 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
             continue;
         }
         if (patch.dlss_quality) {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
             const bool wanted = Settings::OcarinaDlssRenderScale() == patch.dlss_quality &&
                                 std::find(disabled.cbegin(), disabled.cend(),
                                           MAX_RESOLUTION_NAME) == disabled.cend();

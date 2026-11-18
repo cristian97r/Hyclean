@@ -24,6 +24,7 @@ enum class EdenPath {
     LogDir,         // Where log files are stored.
     LosslessDir,    // Where the user-supplied Lossless Scaling library is stored.
     NANDDir,        // Where the emulated NAND is stored.
+    NgxDir,         // Where the Lichii DLSS module and NVIDIA's NGX files are stored.
     PlayTimeDir,    // Where play time data is stored.
     PostPresetDir,
     PostShaderDir,  // Where user post-processing shaders are stored.

@@ -17,7 +17,7 @@
 #include "video_core/renderer_vulkan/vk_compute_pass.h"
 #include "video_core/renderer_vulkan/vk_dlss_network_probe.h"
 #include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
 #include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #endif
 #include "video_core/renderer_vulkan/vk_render_pass_cache.h"
@@ -344,9 +344,9 @@ public:
     /// Draws an upscaler's RGBA16F output into the DLSS output and returns it to GENERAL.
     void DrawUpscaledOutput(Framebuffer* dst_framebuffer, VkImageView view, VkImage image,
                             VkSampler sampler);
-#ifdef EGLANTINE_STREAMLINE
-    /// NVIDIA's DLSS (through NVIDIA Streamline) in place of the game's,
-    /// before FSR 3.1, when the setting is on. Returns false to fall back to FSR 3.1.
+#ifdef EGLANTINE_DLSS
+    /// NVIDIA's DLSS (Streamline on Windows, the Lichii DLSS module on Linux) in place of the
+    /// game's, before FSR 3.1, when the setting is on. Returns false to fall back to FSR 3.1.
     bool UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageView& input_color,
                          ImageView& motion_vectors, ImageView& depth,
                          std::array<u32, 2> render_size, std::array<f32, 2> jitter,

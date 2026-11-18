@@ -1607,6 +1607,19 @@ bool Device::GetSuitability(bool requires_swapchain) {
     }
 #endif
 
+#ifdef EGLANTINE_DLSS_NGX
+    // NGX's DLSS needs these two when the driver reports them, and refuses
+    // nothing when it does not.
+    for (const char* const name :
+         {VK_NVX_BINARY_IMPORT_EXTENSION_NAME, VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME}) {
+        if (supported_extensions.contains(name)) {
+            loaded_extensions.insert(name);
+        } else {
+            LOG_INFO(Render_Vulkan, "Device doesn't support extension {}", name);
+        }
+    }
+#endif
+
 #undef FEATURE_EXTENSION
 #undef EXTENSION
 

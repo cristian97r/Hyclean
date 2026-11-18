@@ -168,6 +168,7 @@ public:
         GenerateEdenPath(EdenPath::LogDir, eden_path / LOG_DIR);
         GenerateEdenPath(EdenPath::LosslessDir, eden_path / LOSSLESS_DIR);
         GenerateEdenPath(EdenPath::NANDDir, eden_path / NAND_DIR);
+        GenerateEdenPath(EdenPath::NgxDir, eden_path / NGX_DIR);
         GenerateEdenPath(EdenPath::PlayTimeDir, eden_path / PLAY_TIME_DIR);
         GenerateEdenPath(EdenPath::PostPresetDir, eden_path / POST_PRESET_DIR);
         GenerateEdenPath(EdenPath::PostShaderDir, eden_path / POST_SHADER_DIR);

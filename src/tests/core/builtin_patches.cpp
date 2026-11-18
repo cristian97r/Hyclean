@@ -984,7 +984,7 @@ TEST_CASE("Built-in Texture Pool x2 doubles the allocator's initial pool size",
 }
 
 TEST_CASE("Built-in DLSS render scale follows the NVIDIA DLSS quality", "[patch_manager]") {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     constexpr bool DlssBuild = true;
 #else
     constexpr bool DlssBuild = false;

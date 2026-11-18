@@ -224,7 +224,7 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     QCheckBox* frame_gen_checkbox = nullptr;
     QComboBox* frame_gen_type_combobox = nullptr;
     QCheckBox* nvidia_dlss_checkbox = nullptr;
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     NvidiaDlssPanel* nvidia_dlss_panel = nullptr;
 #endif
 
@@ -234,8 +234,9 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
             continue;
         }
 #endif
-#ifndef EGLANTINE_STREAMLINE
-        // Only builds with NVIDIA Streamline (Windows) can use it.
+#ifndef EGLANTINE_DLSS
+        // Only builds with a DLSS backend (Streamline on Windows, the Lichii DLSS module
+        // elsewhere) can use it.
         if (setting->Id() == Settings::values.nvidia_dlss.Id() ||
             setting->Id() == Settings::values.nvidia_dlss_quality.Id() ||
             setting->Id() == Settings::values.nvidia_dlss_preset.Id()) {
@@ -367,7 +368,7 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
 
             hold_graphics.emplace(setting->Id(), widget);
 #endif
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
         } else if (setting->Id() == Settings::values.nvidia_dlss.Id()) {
             nvidia_dlss_checkbox = widget->checkbox;
             // NVIDIA's files and a download button under the checkbox.
@@ -422,7 +423,7 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
         }
     }
 
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     // The panel lists DLSS Frame Generation's files too while that frame generation type is
     // chosen, and shows for it even before "Use NVIDIA DLSS" is ticked.
     if (nvidia_dlss_panel != nullptr) {
