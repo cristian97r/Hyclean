@@ -58,6 +58,9 @@ public:
 
     void ApplyConfiguration();
 
+    /// Opens on the Graphics page (its upscaler settings) instead of General.
+    void ShowGraphics();
+
     /// Drop the controller edits that were not applied; the Controls tab changes them live.
     void RestoreInputConfiguration();
 

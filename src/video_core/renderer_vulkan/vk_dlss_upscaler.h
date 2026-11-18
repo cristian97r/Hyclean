@@ -9,13 +9,14 @@
 #include <array>
 #include <atomic>
 #include <optional>
+#include <string>
 
 #include "common/common_types.h"
 #include "common/settings_enums.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 
 namespace VideoCore {
-struct DlssStatus;
+struct UpscalerStatus;
 }
 
 namespace Vulkan {
@@ -24,7 +25,7 @@ class Device;
 class MemoryAllocator;
 class Scheduler;
 
-class StreamlineDlssUpscaler {
+class DlssUpscaler {
 public:
     struct Image {
         VkImageView view;
@@ -61,10 +62,15 @@ public:
         std::optional<Camera> camera;
     };
 
-    /// Throws vk::Exception when Streamline has no DLSS for this device.
-    explicit StreamlineDlssUpscaler(const Device& device, Scheduler& scheduler,
+    /// Throws vk::Exception when this device has no DLSS (Streamline on Windows,
+    /// the Lichii DLSS module on Linux).
+    explicit DlssUpscaler(const Device& device, Scheduler& scheduler,
                                     MemoryAllocator& memory_allocator);
-    ~StreamlineDlssUpscaler();
+    ~DlssUpscaler();
+
+    /// Whether DLSS can run at all: the platform's backend, once per process.
+    /// Records why it cannot, for the settings panel.
+    static bool Available(const Device& device);
 
     /// Records one evaluation into the output image (RGBA16F at the upscale size, GENERAL
     /// layout). Returns false when DLSS can't run, so the caller can fall back to FSR 3.1.
@@ -74,8 +80,11 @@ public:
         return failed.load();
     }
 
-    /// Evaluations that succeeded in this process, for the status bar.
-    [[nodiscard]] static VideoCore::DlssStatus Status();
+    /// Evaluations that succeeded in this process and the last one's mode, for the status bar.
+    static void Status(VideoCore::UpscalerStatus& status);
+
+    /// Why DLSS can't run though the setting is on; empty when it can (or has not been tried).
+    [[nodiscard]] static std::string FallbackReason();
 
     [[nodiscard]] VkImage OutputImage() const noexcept {
         return *output_image;
@@ -97,9 +106,17 @@ private:
     const Device& device;
     Scheduler& scheduler;
     MemoryAllocator& memory_allocator;
+#ifdef _WIN32
     void* set_options{}; ///< slDLSSSetOptions
     void* get_state{};   ///< slDLSSGetState
     void* get_optimal_settings{};
+#else
+    u64 ngx_feature{};                 ///< The NGX feature handle, 0 while absent or refused.
+    std::atomic<bool> create_refused{}; ///< Set on the worker; the caller retries on a change.
+    std::atomic<u32> eval_failures{};  ///< Consecutive evaluation failures of the feature.
+    bool feature_recreated{};
+    bool depth_inverted_input = true;
+#endif
     VkExtent2D render_extent{};
     VkExtent2D upscale_extent{};
     bool hdr_input = true;

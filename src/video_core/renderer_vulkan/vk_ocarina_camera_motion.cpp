@@ -22,8 +22,10 @@
 #include "video_core/host_shaders/ocarina_dlss_effects_base_comp_spv.h"
 #include "video_core/host_shaders/ocarina_dlss_effects_comp_spv.h"
 #include "video_core/renderer_vulkan/vk_master_semaphore.h"
+#ifdef EGLANTINE_DLSS
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
+#endif
 #ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
 #include "video_core/vulkan_common/streamline.h"
 #endif
 
@@ -718,9 +720,9 @@ struct OcarinaUpscaler::Impl {
           motion_pass{device, scheduler, pool_},
           color_pass{device, scheduler, pool_},
           output_pass{device, scheduler, pool_, OCARINA_DLSS_OUTPUT_COMP_SPV} {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
         if (backend == VideoCommon::OcarinaUpscaleBackend::Dlss) {
-            dlss = std::make_unique<StreamlineDlssUpscaler>(device, scheduler, allocator);
+            dlss = std::make_unique<DlssUpscaler>(device, scheduler, allocator);
             return;
         }
 #endif
@@ -746,8 +748,8 @@ struct OcarinaUpscaler::Impl {
     ComputePassDescriptorQueue& queue;
     MemoryAllocator& allocator;
     DescriptorPool& pool;
-#ifdef EGLANTINE_STREAMLINE
-    std::unique_ptr<StreamlineDlssUpscaler> dlss;
+#ifdef EGLANTINE_DLSS
+    std::unique_ptr<DlssUpscaler> dlss;
 #endif
     std::unique_ptr<Fsr3Upscaler> fsr;
     std::unique_ptr<Fsr4Upscaler> fsr4;
@@ -762,20 +764,20 @@ struct OcarinaUpscaler::Impl {
     }
 
     bool Failed() const {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
         return dlss ? dlss->Failed() : !fsr;
 #else
         return !fsr;
 #endif
     }
     VkSampler PointSampler() const {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
         if (dlss) return dlss->PointSampler();
 #endif
         return fsr->PointSampler();
     }
     VkImageView OutputView() const {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
         if (dlss) return dlss->OutputView();
 #endif
         if (output_fsr4) return fsr4->OutputView();
@@ -1002,7 +1004,7 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
     const bool reset = !state.last_frame || frame != *state.last_frame + 1 ||
                        !std::ranges::equal(previous, state.last_view_projection,
                                            [](f32 a, f32 b) { return std::abs(a - b) < 0.001f; });
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     if (state.dlss && !state.dlss->Upscale({
             .color = {*resources.color_view, *resources.color, LIVE_COLOR_FORMAT, COLOR_RANGE,
                       VK_IMAGE_ASPECT_COLOR_BIT},
@@ -1011,13 +1013,13 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
                                COLOR_RANGE, VK_IMAGE_ASPECT_COLOR_BIT},
             .render_size = extent,
             .upscale_size = output_extent,
-            .jitter = {0.0f, 0.0f},
+            .jitter = jitter,
             .motion_vector_scale = {1.0f, 1.0f},
             .reset = reset,
             .depth_inverted = false,
             .hdr = false,
             .depth_size = depth_extent,
-            .camera = StreamlineDlssUpscaler::Inputs::Camera{current, *transform},
+            .camera = DlssUpscaler::Inputs::Camera{current, *transform},
         })) {
         state.scheduler.InvalidateState();
         return false;
@@ -1114,17 +1116,12 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
 VideoCommon::OcarinaUpscaleBackend ResolveOcarinaUpscaler(const Device& device) {
     const char* value = std::getenv("EDEN_NX2_DLSS_REPLACEMENT");
     bool dlss_available = false;
-#ifdef EGLANTINE_STREAMLINE
-    dlss_available = Streamline::IsDlssAvailable();
+#ifdef EGLANTINE_DLSS
+    dlss_available = DlssUpscaler::Available(device);
 #endif
-    // Balanced's scene is padded, which only DLSS takes. Only the DLSS patch's scale brings FSR in
-    // without ocarina_fsr; ocarina_render_scale alone stays native.
-    const auto scale = Settings::AppliedOcarinaRenderScale();
-    const bool render_scaled = scale && *scale != Settings::NvidiaDlssQuality::Balanced &&
-                               Settings::OcarinaDlssRenderScale();
     const auto backend = VideoCommon::SelectOcarinaUpscaler(
         Settings::values.ocarina_fsr.GetValue(), Settings::values.nvidia_dlss.GetValue(),
-        dlss_available, render_scaled, value ? value : "");
+        dlss_available, value ? value : "");
     if (backend == VideoCommon::OcarinaUpscaleBackend::Fsr && !Fsr3Upscaler::IsSupported(device)) {
         return VideoCommon::OcarinaUpscaleBackend::Native;
     }

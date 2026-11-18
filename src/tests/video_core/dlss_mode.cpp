@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "common/settings.h"
 #include "video_core/dlss_mode.h"
+#include "video_core/upscaler_status.h"
 
 namespace Mode = VideoCommon::DlssMode;
 using Quality = Settings::NvidiaDlssQuality;
@@ -85,4 +86,55 @@ TEST_CASE("Automatic DLSS checks other modes when its ratio heuristic is invalid
                                      });
     REQUIRE(result.mode == Quality::Balanced);
     REQUIRE_FALSE(result.fallback);
+}
+
+TEST_CASE("The status bar names the upscaler that evaluated since the last tick", "[dlss_mode]") {
+    using VideoCore::ActiveUpscaler;
+    using VideoCore::Upscaler;
+    const VideoCore::UpscalerStatus before{.dlss = 5, .fsr3 = 7, .fsr4 = 2};
+    VideoCore::UpscalerStatus now = before;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::None);
+    now.fsr3 = 8;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Fsr3);
+    now.fsr4 = 3;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Fsr4);
+    // DLSS ticked again after an FSR stretch: DLSS wins the tick it ran in.
+    now.dlss = 6;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Dlss);
+}
+
+TEST_CASE("Only the chosen upscaler runs; Native is the console's picture", "[dlss_mode]") {
+    using VideoCore::ChosenUpscaler;
+    using VideoCore::PickGameUpscale;
+    using VideoCore::UpscalerChoice;
+    using enum VideoCore::GameUpscale;
+    STATIC_REQUIRE(ChosenUpscaler(false, false) == UpscalerChoice::Native);
+    STATIC_REQUIRE(ChosenUpscaler(true, false) == UpscalerChoice::Dlss);
+    STATIC_REQUIRE(ChosenUpscaler(false, true) == UpscalerChoice::Fsr);
+    STATIC_REQUIRE(ChosenUpscaler(true, true) == UpscalerChoice::Dlss);
+    // choice, network runs, NVIDIA DLSS runs
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, true, true) == Network);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, false, true) == StandIn);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, false, false) == StandIn);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Dlss, true, true) == Dlss);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Dlss, true, false) == Fsr3);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Fsr, true, true) == Fsr3);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Fsr, false, false) == Fsr3);
+}
+
+TEST_CASE("The status bar tooltip shows the running upscaler's input and output size",
+          "[dlss_mode]") {
+    using VideoCore::RunningUpscaleSize;
+    using VideoCore::Upscaler;
+    using VideoCore::UpscaleSize;
+    constexpr UpscaleSize oot{1280, 720, 3840, 2160};
+    static_assert(UpscaleSize::Unpack(oot.Pack()) == oot);
+    static_assert(UpscaleSize::Unpack(UpscaleSize{7680, 4320, 7680, 4320}.Pack()) ==
+                  UpscaleSize{7680, 4320, 7680, 4320});
+    const VideoCore::UpscalerStatus status{
+        .dlss_size = oot, .fsr3_size = {1920, 1080, 2560, 1440}, .fsr4_size = {}};
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Dlss) == oot);
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Fsr3) == UpscaleSize{1920, 1080, 2560, 1440});
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Fsr4) == UpscaleSize{});
+    REQUIRE(RunningUpscaleSize(status, Upscaler::None) == UpscaleSize{});
 }

@@ -92,6 +92,7 @@ Values values;
 namespace {
 std::atomic<u32> nvidia_dlss_runtime_options{};
 std::atomic<u32> applied_ocarina_render_scale{};
+std::atomic<u32> upscaler_settings_generation{};
 }
 
 void RefreshNvidiaDlssRuntimeSettings() {
@@ -99,6 +100,11 @@ void RefreshNvidiaDlssRuntimeSettings() {
         static_cast<u32>(values.nvidia_dlss_quality.GetValue()) |
             (static_cast<u32>(values.nvidia_dlss_preset.GetValue()) << 8),
         std::memory_order_relaxed);
+    upscaler_settings_generation.fetch_add(1, std::memory_order_release);
+}
+
+u32 UpscalerSettingsGeneration() {
+    return upscaler_settings_generation.load(std::memory_order_acquire);
 }
 
 std::optional<NvidiaDlssQuality> OcarinaDlssRenderScale() {
@@ -122,6 +128,17 @@ std::optional<OcarinaRenderScale> OcarinaRenderScaleSetting() {
 void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality) {
     applied_ocarina_render_scale.store(quality ? static_cast<u32>(*quality) + 1 : 0,
                                        std::memory_order_relaxed);
+}
+
+std::optional<NvidiaDlssQuality> OcarinaRenderScaleAtNextStart() {
+    if (const auto dlss = OcarinaDlssRenderScale()) {
+        return dlss;
+    }
+    if (const auto scale = OcarinaRenderScaleSetting()) {
+        // Balanced, Performance and Ultra Performance sit 2 apart in the two enums.
+        return static_cast<NvidiaDlssQuality>(static_cast<u32>(*scale) + 2);
+    }
+    return std::nullopt;
 }
 
 std::optional<NvidiaDlssQuality> AppliedOcarinaRenderScale() {

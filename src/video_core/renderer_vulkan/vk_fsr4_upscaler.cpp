@@ -32,6 +32,9 @@
 
 namespace Vulkan {
 namespace {
+std::atomic<u64> evaluations{};
+std::atomic<u64> last_size{};
+
 constexpr VkFormat OUTPUT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
 constexpr VkImageUsageFlags OUTPUT_USAGE = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
                                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -459,7 +462,17 @@ bool Fsr4Upscaler::Upscale(const Inputs& in) {
         cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, {}, {}, back);
     });
+    last_size.store(VideoCore::UpscaleSize{in.render_size.width, in.render_size.height,
+                                           in.upscale_size.width, in.upscale_size.height}
+                        .Pack(),
+                    std::memory_order_relaxed);
+    evaluations.fetch_add(1, std::memory_order_relaxed);
     return true;
+}
+
+void Fsr4Upscaler::Status(VideoCore::UpscalerStatus& status) noexcept {
+    status.fsr4 = evaluations.load(std::memory_order_relaxed);
+    status.fsr4_size = VideoCore::UpscaleSize::Unpack(last_size.load(std::memory_order_relaxed));
 }
 
 } // namespace Vulkan

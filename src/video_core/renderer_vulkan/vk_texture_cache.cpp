@@ -50,8 +50,8 @@
 #include "video_core/texture_cache/util.h"
 #include "video_core/dlss_contract.h"
 #include "video_core/vulkan_common/vulkan_device.h"
-#ifdef EGLANTINE_STREAMLINE
-#include "video_core/vulkan_common/streamline.h"
+#ifdef EGLANTINE_DLSS
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #endif
 #include "video_core/vulkan_common/unbacked_fallback.h"
 #include "video_core/vulkan_common/vulkan_memory_allocator.h"
@@ -2020,21 +2020,32 @@ bool TextureCacheRuntime::WantsTemporalUpscaleDepth() const {
     if (force_standin) {
         return false;
     }
-#ifdef EGLANTINE_STREAMLINE
-    if (Streamline::IsDlssAvailable() && !dlss_unsupported) {
-        return true;
-    }
+    // The replacement runs only while the game's network isn't shown.
+    bool dlss_runs = false;
+#ifdef EGLANTINE_DLSS
+    dlss_runs = DlssUpscaler::Available(device) && !dlss_unsupported;
 #endif
+    const auto choice = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue());
+    switch (VideoCore::PickGameUpscale(choice, false, dlss_runs)) {
+    case VideoCore::GameUpscale::StandIn:
+    case VideoCore::GameUpscale::Network:
+        return false;
+    case VideoCore::GameUpscale::Dlss:
+        return true;
+    case VideoCore::GameUpscale::Fsr3:
+        break;
+    }
     return !fsr3_unsupported;
 }
 
 bool TextureCacheRuntime::UsesNvidiaDlss() const {
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     static const bool force_fsr = [] {
         const char* const value = std::getenv("EDEN_NX2_DLSS_REPLACEMENT");
         return value && std::string_view{value} == "fsr";
     }();
-    return !force_fsr && !dlss_unsupported && Streamline::IsDlssAvailable();
+    return !force_fsr && !dlss_unsupported && DlssUpscaler::Available(device);
 #else
     return false;
 #endif
@@ -2068,7 +2079,7 @@ bool TextureCacheRuntime::UpscaleWithFsr3(Framebuffer* dst_framebuffer, ImageVie
             : 1000.0f / 30.0f;
     const bool reset = !fsr3_last_evaluation || frame_time_ms > 250.0f;
     fsr3_last_evaluation = now;
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
     if (UpscaleWithDlss(dst_framebuffer, input_color, motion_vectors, depth, render_size, jitter,
                         motion_scale, reset)) {
         return true;
@@ -2175,7 +2186,7 @@ void TextureCacheRuntime::DrawUpscaledOutput(Framebuffer* dst_framebuffer, VkIma
     });
 }
 
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
 bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageView& input_color,
                                           ImageView& motion_vectors, ImageView& depth,
                                           std::array<u32, 2> render_size,
@@ -2189,15 +2200,22 @@ bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageVie
     if (force_fsr || dlss_unsupported) {
         return false;
     }
+    // Off in the settings: FSR 3.1 this frame, DLSS again once it is ticked, from a fresh
+    // history since its last frames are stale by then.
+    if (!Settings::values.nvidia_dlss.GetValue()) {
+        dlss_paused = true;
+        return false;
+    }
+    reset = reset || std::exchange(dlss_paused, false);
     if (!dlss_upscaler) {
-        // Off in the settings, or Streamline didn't start: it has said why.
-        if (!Streamline::IsDlssAvailable()) {
+        // The backend never started: it has said why.
+        if (!DlssUpscaler::Available(device)) {
             dlss_unsupported = true;
             return false;
         }
         try {
             dlss_upscaler =
-                std::make_unique<StreamlineDlssUpscaler>(device, scheduler, memory_allocator);
+                std::make_unique<DlssUpscaler>(device, scheduler, memory_allocator);
         } catch (const vk::Exception& exception) {
             LOG_WARNING(Render_Vulkan, "NVIDIA DLSS unavailable ({}); using FSR 3.1",
                         exception.what());
@@ -2206,7 +2224,7 @@ bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageVie
         }
     }
     const auto image = [&](ImageView& view, VkImageView handle, VkImageAspectFlags aspect) {
-        return StreamlineDlssUpscaler::Image{
+        return DlssUpscaler::Image{
             .view = handle,
             .image = view.ImageHandle(),
             .format = MaxwellToVK::SurfaceFormat(device, FormatType::Optimal, false, view.format)
@@ -4996,13 +5014,10 @@ void CustomBorderColorBudget::Release() noexcept {
     held = 0;
 }
 
-f32 TextureCacheRuntime::OcarinaFsrLodBias() {
-    if (!ocarina_fsr_lod_bias) {
-        const bool ocarina = Settings::GetCurrentProgramID() == 0x0400486024DEC000ULL;
-        ocarina_fsr_lod_bias =
-            ocarina ? VideoCommon::OcarinaFsrLodBias(ResolveOcarinaUpscaler(device)) : 0.0f;
-    }
-    return *ocarina_fsr_lod_bias;
+f32 TextureCacheRuntime::OcarinaFsrLodBias() const {
+    const bool ocarina = Settings::GetCurrentProgramID() == 0x0400486024DEC000ULL;
+    return ocarina ? VideoCommon::OcarinaFsrLodBias(VideoCommon::OcarinaUpscaleBackend::Fsr)
+                   : 0.0f;
 }
 
 Sampler::Sampler(TextureCacheRuntime& runtime, const Tegra::Texture::TSCEntry& tsc) {
@@ -5075,7 +5090,7 @@ Sampler::Sampler(TextureCacheRuntime& runtime, const Tegra::Texture::TSCEntry& t
     // Ocarina with FSR: FSR renders below the output size, so textures would pick the render
     // size's mips; the bias keeps the output's detail (VideoCommon::OcarinaFsrLodBias).
     f32 lod_bias = tsc.LodBias();
-    ocarina_fsr_failed = &runtime.ocarina_fsr_failed;
+    this->runtime = &runtime;
     if (const f32 fsr_lod_bias = runtime.OcarinaFsrLodBias();
         fsr_lod_bias != 0.0f && tsc.mipmap_filter != TextureMipmapFilter::None) {
         const f32 biased = std::clamp(lod_bias + fsr_lod_bias, -15.0f, 15.0f);
@@ -5123,12 +5138,12 @@ Sampler::VariantKey Sampler::MakeKey(const ImageView& image_view, bool is_depth)
     key.drop_compare = has_depth_comparison && !is_depth;
     // The FSR bias is for the game's textures. Images the GPU wrote (render targets: bloom and
     // blur chains, reflections, fog) keep the game's own bias, or they'd read a mip too sharp.
-    // So does every image in handheld mode (the console mode can change in-session), and after
-    // the upscaler failed this session (the game's pass runs again).
+    // So does every image in handheld mode (the console mode can change in-session), and every
+    // image while FSR does not run (DLSS, off, or failed: the game's pass runs again).
     if (added_lod_bias != 0.0f) {
         const Image* const image = image_view.BackingImage();
         key.drop_lod_bias = !VideoCommon::KeepOcarinaFsrLodBias(
-            Settings::IsDockedMode(), *ocarina_fsr_failed,
+            runtime->ocarina_fsr_running, Settings::IsDockedMode(),
             image != nullptr && True(image->flags & ImageFlagBits::GpuModified));
     }
     if (needs_swizzle_mapping && !key.drop_custom_border && !image_view.HasIdentitySwizzle()) {
@@ -5196,6 +5211,7 @@ VkSampler Sampler::Emplace(VariantKey key) {
     VkSamplerCreateInfo create_info = base_ci;
     if (key.drop_lod_bias) {
         create_info.mipLodBias -= added_lod_bias;
+        ++runtime->ocarina_unbiased_samplers;
     }
     if (key.drop_compare) {
         create_info.compareEnable = VK_FALSE;

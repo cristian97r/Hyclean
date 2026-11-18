@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/common_types.h"
+#include "video_core/upscaler_status.h"
 #include "video_core/renderer_vulkan/vk_update_descriptor.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 
@@ -59,6 +60,10 @@ public:
     /// Records one evaluation into Output(): RGBA16F at the upscale size, GENERAL layout, ready to
     /// be sampled by a fragment shader.
     void Upscale(const Inputs& inputs);
+
+    /// Evaluations recorded in this process, for the status bar.
+    /// Evaluations so far and the last one's sizes, for the status bar.
+    static void Status(VideoCore::UpscalerStatus& status) noexcept;
 
     [[nodiscard]] VkImage OutputImage() const noexcept;
     [[nodiscard]] VkImageView OutputView() const noexcept;

@@ -20,6 +20,7 @@
 #include "core/frontend/framebuffer_layout.h"
 #include "video_core/gpu.h"
 #include "video_core/rasterizer_interface.h"
+#include "video_core/upscaler_status.h"
 
 namespace Core::Frontend {
 class EmuWindow;
@@ -56,14 +57,6 @@ struct FrameGenStatus {
     u64 generated_frames{};
 };
 
-struct DlssStatus {
-    u64 evaluations{};
-    /// The last evaluation's settings: the mode it ran in, and the mode and preset the user chose
-    Settings::NvidiaDlssQuality mode{};
-    Settings::NvidiaDlssQuality requested{};
-    Settings::NvidiaDlssPreset preset{};
-};
-
 struct RendererSettings {
     // Screenshot
     std::atomic<bool> screenshot_requested{false};
@@ -97,8 +90,8 @@ public:
         return {};
     }
 
-    /// How many NVIDIA DLSS evaluations ran so far and the mode of the last one
-    [[nodiscard]] virtual DlssStatus GetDlssStatus() const {
+    /// How many temporal upscaler evaluations ran so far, and DLSS's last mode
+    [[nodiscard]] virtual UpscalerStatus GetUpscalerStatus() const {
         return {};
     }
 

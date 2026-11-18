@@ -35,6 +35,7 @@
 #include "lichii/compatibility_report.h"
 #include "lichii/hotkeys.h"
 #include "lichii/user_data_migration.h"
+#include "video_core/upscaler_status.h"
 
 #ifdef __unix__
 #include <QDBusObjectPath>
@@ -195,7 +196,8 @@ public:
         return frame_gen_fps;
     }
 
-    /// What NVIDIA DLSS ran as since the last status bar update, empty when it didn't run
+    /// What upscaled the game since the last status bar update (DLSS and its mode, FSR 3.1 or
+    /// FSR 4), empty when nothing did
     [[nodiscard]] const QString& DlssStatusText() const {
         return dlss_status_text;
     }
@@ -507,6 +509,9 @@ private:
     void UpdateAAText();
     void UpdatePostShaderText();
     void UpdateFrameGenButton();
+    void UpdateUpscalerButton(VideoCore::Upscaler running);
+    /// Turns on the chosen upscaler's setting and the others off, as the settings page does.
+    void ChooseUpscaler(VideoCore::UpscalerChoice choice);
     void UpdateVolumeUI();
     void UpdateStatusBar();
     void UpdateGPUAccuracyButton();
@@ -604,7 +609,6 @@ private:
     QLabel* res_scale_label = nullptr;
     QLabel* emu_speed_label = nullptr;
     QLabel* game_fps_label = nullptr;
-    QLabel* dlss_status_label = nullptr;
     QLabel* emu_frametime_label = nullptr;
     QLabel* tas_label = nullptr;
     QLabel* firmware_label = nullptr;
@@ -616,10 +620,13 @@ private:
     QPushButton* aa_status_button = nullptr;
     QPushButton* post_shader_status_button = nullptr;
     QPushButton* frame_gen_status_button = nullptr;
+    QPushButton* upscaler_status_button = nullptr;
     VideoCore::FrameGenState frame_gen_state{};
     u64 frame_gen_frames = 0;
-    u64 dlss_evaluations = 0;
+    VideoCore::UpscalerStatus upscaler_status; ///< At the last status bar update
+    /// What upscaled the game since the last status bar update, empty when nothing did
     QString dlss_status_text;
+    bool configure_graphics_next = false; ///< OnConfigure opens on the Graphics page once
     bool frame_gen_generating = false;
     double frame_gen_fps = 0.0;
     QElapsedTimer frame_gen_fps_timer;

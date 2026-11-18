@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#ifdef EGLANTINE_STREAMLINE
+#ifdef EGLANTINE_DLSS
 
 #include "common/httplib.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -30,17 +31,29 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <fmt/format.h>
+#ifdef _WIN32
 #include <zlib.h>
 
+#include "video_core/vulkan_common/streamline.h"
+#else
+#include <openssl/sha.h>
+
+#include "video_core/renderer_vulkan/vk_ngx_dlss.h"
+#endif
 #include "common/common_types.h"
 #include "common/fs/fs_util.h"
 #include "common/logging.h"
-#include "video_core/vulkan_common/streamline.h"
 #include "lichii/configuration/nvidia_dlss_panel.h"
 
 #include "common/net/ca_store.h"
 
 namespace {
+
+QString Tr(const char* text) {
+    return QCoreApplication::translate("NvidiaDlssPanel", text);
+}
+
+#ifdef _WIN32
 
 namespace Streamline = Vulkan::Streamline;
 
@@ -58,10 +71,6 @@ constexpr const char* BIN_DIR = "bin/x64/";
 
 std::string FileName(const std::string& entry) {
     return Common::FS::PathToUTF8String(std::filesystem::path{entry}.filename());
-}
-
-QString Tr(const char* text) {
-    return QCoreApplication::translate("NvidiaDlssPanel", text);
 }
 
 u16 U16(const std::string& data, size_t at) {
@@ -308,6 +317,85 @@ QString Named(const QString& name, const std::string& version) {
 QString PathText(const std::filesystem::path& path) {
     return QString::fromStdWString(path.wstring());
 }
+#else
+// Everything comes from pinned sources with checked SHA-256 sums: the module
+// (Lichii's MIT code) from its release, NVIDIA's DLSS model runtime and licence
+// from NVIDIA's DLSS-tos repository at a pinned commit.
+constexpr const char* NGX_COMMIT = "9981c6350dc58c0ce21f024fd65e31e851c31689";
+constexpr const char* RUNTIME_NAME = "libnvidia-ngx-dlss.so.310.9.16";
+constexpr const char* RUNTIME_SHA256 =
+    "30982c937afed85c96b8d313323de9a650a2eec6de1bb0f714b21750f4ce98f6";
+constexpr const char* LICENSE_SHA256 =
+    "d4216e39ebef5f9b50a6712ebb37beeb5379862a67733a9999c651f21592aaf0";
+constexpr const char* MODULE_NAME = "lichii-dlss-module.so";
+constexpr const char* MODULE_RELEASE_PAGE = "https://github.com/tasarren/lichii-dlss/releases";
+// TODO(tasarren/lichii-dlss): pin the module's release address once the repository
+// publishes it; until then the placeholder fails the download with its own message.
+constexpr const char* MODULE_URL =
+    "https://github.com/tasarren/lichii-dlss/releases/download/v1.0.0/lichii-dlss-module.so";
+constexpr const char* MODULE_SHA256 = "";
+
+struct Downloadable {
+    std::string url;
+    std::string_view sha256;
+    std::filesystem::path target;
+};
+
+std::vector<Downloadable> WantedFiles(const std::filesystem::path& folder) {
+    return {
+        {MODULE_URL, MODULE_SHA256, folder / MODULE_NAME},
+        {fmt::format("https://raw.githubusercontent.com/NVIDIA/DLSS/{}/lib/Linux_x86_64/rel/{}",
+                     NGX_COMMIT, RUNTIME_NAME),
+         RUNTIME_SHA256, folder / RUNTIME_NAME},
+        {fmt::format("https://raw.githubusercontent.com/NVIDIA/DLSS/{}/LICENSE.txt", NGX_COMMIT),
+         LICENSE_SHA256, folder / "NVIDIA-LICENSE.txt"},
+    };
+}
+
+bool Sha256Matches(const std::string& data, std::string_view expected) {
+    std::array<u8, SHA256_DIGEST_LENGTH> digest;
+    SHA256(reinterpret_cast<const u8*>(data.data()), data.size(), digest.data());
+    std::string hex;
+    hex.reserve(digest.size() * 2);
+    for (const u8 byte : digest) {
+        hex += "0123456789abcdef"[byte >> 4];
+        hex += "0123456789abcdef"[byte & 0xf];
+    }
+    return hex == expected;
+}
+
+/// One GET saved whole into data, with the SHA-256 checked by the caller.
+bool FetchFile(const std::string& url, const std::function<bool(u64)>& progress,
+               std::string& error, std::string& data) {
+    const size_t scheme = url.find("://");
+    const size_t host_end = scheme == std::string::npos ? 0 : url.find('/', scheme + 3);
+    if (scheme == std::string::npos || host_end == std::string::npos) {
+        error = "bad download address";
+        return false;
+    }
+    httplib::Client client(url.substr(0, host_end));
+    client.set_connection_timeout(30);
+    client.set_read_timeout(30);
+    client.set_follow_location(true);
+    Common::Net::ConfigureCaStore(client);
+    data.clear();
+    const auto result = client.Get(url.substr(host_end),
+                                   [&](const char* part, size_t length) {
+                                       data.append(part, length);
+                                       return !progress || progress(data.size());
+                                   });
+    if (!result || result->status != 200) {
+        error = result ? fmt::format("HTTP {}", result->status)
+                       : httplib::to_string(result.error());
+        return false;
+    }
+    return true;
+}
+
+std::filesystem::path Folder() {
+    return std::filesystem::path{Vulkan::Ngx::ModuleDir()};
+}
+#endif
 
 } // Anonymous namespace
 
@@ -333,12 +421,22 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
     download_button = new QPushButton(this);
     folder_button = new QPushButton(Tr("Open Folder"), this);
     QLabel* about = new QLabel(
-        QStringLiteral("<a href=\"%1\">%2</a>").arg(QString::fromLatin1(RELEASE_PAGE),
+        QStringLiteral("<a href=\"%1\">%2</a>").arg(QString::fromLatin1(
+#ifdef _WIN32
+                                                         RELEASE_PAGE),
+#else
+                                                         MODULE_RELEASE_PAGE),
+#endif
                                                    Tr("Where do these files come from?")),
         this);
     about->setOpenExternalLinks(true);
+#ifdef _WIN32
     about->setToolTip(Tr("NVIDIA's Streamline releases on GitHub. The files are in bin\\x64 of "
                          "the release zip."));
+#else
+    about->setToolTip(Tr("Lichii's DLSS module release on GitHub, and NVIDIA's DLSS model from "
+                         "NVIDIA's DLSS repository at a pinned commit."));
+#endif
     button_row->addWidget(download_button);
     button_row->addWidget(folder_button);
     button_row->addStretch(1);
@@ -349,10 +447,19 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
 
     connect(download_button, &QPushButton::clicked, this, [this] { Download(); });
     connect(folder_button, &QPushButton::clicked, this, [] {
+#ifdef _WIN32
         const std::filesystem::path folder = Streamline::FindDlssFiles().folder;
+#else
+        const std::filesystem::path folder = Folder();
+#endif
         std::error_code ec;
         std::filesystem::create_directories(folder, ec);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(PathText(folder)));
+        QDesktopServices::openUrl(QUrl::fromLocalFile(
+#ifdef _WIN32
+            PathText(folder)));
+#else
+            QString::fromStdString(folder.string())));
+#endif
     });
     Refresh();
 }
@@ -363,6 +470,7 @@ void NvidiaDlssPanel::showEvent(QShowEvent* event) {
 }
 
 void NvidiaDlssPanel::Refresh() {
+#ifdef _WIN32
     const Streamline::DlssFiles files = Streamline::FindDlssFiles();
     QStringList streamline_missing;
     if (files.interposer.empty()) {
@@ -434,6 +542,46 @@ void NvidiaDlssPanel::Refresh() {
     status_label->setToolTip(Tr("Folder: %1").arg(PathText(files.folder)));
     download_button->setText(button);
     download_button->setVisible(!ready || !has_frame_gen);
+#else
+    const Vulkan::Ngx::State state = Vulkan::Ngx::Probe();
+    QString status;
+    bool ready = false;
+    switch (state.setup) {
+    case Vulkan::Ngx::Setup::Ready:
+        ready = true;
+        status = Tr("<b>Ready.</b> Found Lichii's DLSS module (version %1) and the DLSS model "
+                    "(%2).<br>While DLSS runs, the status bar shows DLSS, its mode and its "
+                    "preset.")
+                     .arg(QString::fromStdString(state.module_version),
+                          QString::fromStdString(state.dlss_version));
+        break;
+    case Vulkan::Ngx::Setup::NotInstalled:
+        status = Tr("<b>DLSS is not set up.</b> Press Download: Lichii fetches Lichii's DLSS "
+                    "module and NVIDIA's DLSS files (about 57 MB). NVIDIA's licence is shown "
+                    "first. Until then, games use AMD FSR 3.1.");
+        break;
+    case Vulkan::Ngx::Setup::WrongAbi:
+        status = Tr("<b>Lichii's DLSS module is from another Lichii version.</b> Press Download "
+                    "to set it up again. Until then, games use AMD FSR 3.1.");
+        break;
+    case Vulkan::Ngx::Setup::NoNvidia:
+        status = Tr("<b>DLSS needs an NVIDIA GPU with NGX in the driver "
+                    "(libnvidia-ngx.so.1).</b> It was not found, so games use AMD FSR 3.1.");
+        break;
+    case Vulkan::Ngx::Setup::InitFailed:
+        status = Tr("<b>DLSS could not start: %1.</b> The log has the details. Until then, games "
+                    "use AMD FSR 3.1.")
+                     .arg(QString::fromStdString(state.detail));
+        break;
+    }
+    icon_label->setText(ready ? QStringLiteral("<span style=\"color:#2ea043\">&#10004;</span>")
+                              : QStringLiteral("<span style=\"color:#d29922\">&#9888;</span>"));
+    status_label->setText(status);
+    status_label->setToolTip(
+        Tr("Folder: %1").arg(QString::fromStdString(Vulkan::Ngx::ModuleDir())));
+    download_button->setText(Tr("Download"));
+    download_button->setVisible(!ready);
+#endif
 }
 
 void NvidiaDlssPanel::SetFrameGenWanted(bool wanted) {
@@ -445,6 +593,7 @@ void NvidiaDlssPanel::SetFrameGenWanted(bool wanted) {
 }
 
 void NvidiaDlssPanel::Download() {
+#ifdef _WIN32
     const Streamline::DlssFiles files = Streamline::FindDlssFiles();
     std::vector<std::string> wanted;
     // DLSS's Streamline plugins and frame generation's files each come as one set with the loader,
@@ -722,6 +871,152 @@ void NvidiaDlssPanel::Download() {
     }
     QMessageBox::information(this, Tr("NVIDIA DLSS"),
                              Tr("NVIDIA DLSS is ready. It is used the next time a game starts."));
+#else
+    const auto fail = [this](const std::string& error) {
+        LOG_ERROR(Frontend, "NVIDIA DLSS download failed: {}", error);
+        QMessageBox::warning(this, Tr("NVIDIA DLSS"),
+                             Tr("Could not download the DLSS files: %1")
+                                 .arg(QString::fromStdString(error)));
+        Refresh();
+    };
+    if (std::string_view{MODULE_SHA256}.empty()) {
+        fail("Lichii's DLSS module release is not available yet");
+        return;
+    }
+    const std::filesystem::path folder = Folder();
+    const std::vector<Downloadable> wanted = WantedFiles(folder);
+
+    // NVIDIA's licence first: nothing is fetched before it is accepted.
+    QProgressDialog busy(Tr("Contacting the download..."), QString{}, 0, 0, this);
+    busy.setWindowTitle(Tr("NVIDIA DLSS"));
+    busy.setWindowModality(Qt::WindowModal);
+    busy.setMinimumDuration(0);
+    busy.show();
+    QApplication::processEvents();
+    const Downloadable* licence_file = nullptr;
+    for (const Downloadable& file : wanted) {
+        if (file.target.filename() == "NVIDIA-LICENSE.txt") {
+            licence_file = &file;
+        }
+    }
+    std::string licence;
+    std::string error;
+    if (!licence_file || !FetchFile(licence_file->url, {}, error, licence) ||
+        !Sha256Matches(licence, licence_file->sha256)) {
+        busy.close();
+        fail(licence_file ? error : "no licence address");
+        return;
+    }
+    busy.close();
+
+    QStringList names;
+    for (const Downloadable& file : wanted) {
+        names << QString::fromStdString(file.target.filename().string());
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(Tr("Download NVIDIA DLSS"));
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    QLabel* intro = new QLabel(
+        Tr("Lichii will download %1 into %2 (about 57 MB).<br>Lichii's DLSS module is Lichii's "
+           "own, under the MIT licence. NVIDIA's DLSS model and this licence text are NVIDIA's, "
+           "under NVIDIA's licence terms below.")
+            .arg(names.join(QStringLiteral(", ")), QString::fromStdString(folder.string())),
+        &dialog);
+    intro->setWordWrap(true);
+    QPlainTextEdit* licence_text = new QPlainTextEdit(QString::fromStdString(licence), &dialog);
+    licence_text->setReadOnly(true);
+    licence_text->setMinimumSize(640, 380);
+    QDialogButtonBox* buttons = new QDialogButtonBox(&dialog);
+    buttons->addButton(Tr("Accept and Download"), QDialogButtonBox::AcceptRole);
+    buttons->addButton(QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(intro);
+    layout->addWidget(licence_text, 1);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    QProgressDialog progress(Tr("Downloading the DLSS files..."), Tr("Cancel"), 0, 1000, this);
+    progress.setWindowTitle(Tr("NVIDIA DLSS"));
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+    progress.setValue(0);
+    QApplication::processEvents();
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    // Every file is fetched and checked before any is replaced, so a failed
+    // download leaves the old files in place.
+    std::vector<std::pair<std::string, std::string>> fetched;
+    for (size_t i = 0; i < wanted.size(); ++i) {
+        std::string data;
+        if (!FetchFile(wanted[i].url,
+                       [&](u64) {
+                           QApplication::processEvents();
+                           return !progress.wasCanceled();
+                       },
+                       error, data) ||
+            !Sha256Matches(data, wanted[i].sha256)) {
+            progress.close();
+            if (!progress.wasCanceled()) {
+                fail(error.empty() ? fmt::format("{} has a wrong checksum",
+                                                 wanted[i].target.filename().string())
+                                   : error);
+            }
+            return;
+        }
+        fetched.emplace_back(wanted[i].target.filename().string(), std::move(data));
+        progress.setValue(static_cast<int>((i + 1) * 1000 / wanted.size()));
+        QApplication::processEvents();
+    }
+
+    // The old files move aside first, so a failed save puts every one of them back.
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> replaced;
+    const auto restore = [&replaced, &ec] {
+        for (const auto& [backup, target] : replaced) {
+            std::filesystem::remove(target, ec);
+            if (!backup.empty()) {
+                std::filesystem::rename(backup, target, ec);
+            }
+        }
+    };
+    for (size_t i = 0; i < wanted.size(); ++i) {
+        const std::filesystem::path& target = wanted[i].target;
+        std::filesystem::path backup;
+        if (std::filesystem::exists(target, ec)) {
+            backup = target;
+            backup += ".old";
+            std::filesystem::remove(backup, ec);
+            std::filesystem::rename(target, backup, ec);
+        }
+        bool failed = static_cast<bool>(ec);
+        if (!failed) {
+            std::ofstream file(target, std::ios::binary | std::ios::trunc);
+            file.write(fetched[i].second.data(),
+                       static_cast<std::streamsize>(fetched[i].second.size()));
+            failed = !file;
+        }
+        if (failed) {
+            restore();
+            progress.close();
+            fail("could not save " + Common::FS::PathToUTF8String(target));
+            return;
+        }
+        replaced.emplace_back(backup, target);
+    }
+    for (const auto& [backup, target] : replaced) {
+        if (!backup.empty()) {
+            std::filesystem::remove(backup, ec);
+        }
+        LOG_INFO(Frontend, "Downloaded {}", Common::FS::PathToUTF8String(target));
+    }
+    progress.setValue(1000);
+    progress.close();
+    Refresh();
+    QMessageBox::information(this, Tr("NVIDIA DLSS"),
+                             Tr("NVIDIA DLSS is ready. It is used the next time a game starts."));
+#endif
 }
 
 #endif

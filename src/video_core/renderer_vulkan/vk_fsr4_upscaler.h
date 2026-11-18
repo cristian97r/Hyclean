@@ -15,6 +15,7 @@
 #include <string>
 
 #include "common/common_types.h"
+#include "video_core/upscaler_status.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 
 namespace Vulkan {
@@ -66,6 +67,10 @@ public:
     /// Records one evaluation into the output image (RGBA16F at the upscale size, GENERAL
     /// layout). False when FSR 4 can't run (the caller then uses FSR 3.1 from now on).
     bool Upscale(const Inputs& inputs);
+
+    /// Evaluations recorded in this process, for the status bar.
+    /// Evaluations so far and the last one's sizes, for the status bar.
+    static void Status(VideoCore::UpscalerStatus& status) noexcept;
 
     [[nodiscard]] bool Failed() const noexcept {
         return failed.load();

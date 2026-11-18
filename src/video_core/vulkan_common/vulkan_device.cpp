@@ -45,6 +45,9 @@
 #ifdef EGLANTINE_STREAMLINE
 #include "video_core/vulkan_common/streamline.h"
 #endif
+#ifdef EGLANTINE_DLSS_NGX
+#include "video_core/renderer_vulkan/vk_ngx_dlss.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1093,6 +1096,9 @@ Device::~Device() {
         Streamline::Stop();
     }
 #endif
+#ifdef EGLANTINE_DLSS_NGX
+    Ngx::Shutdown(*this);
+#endif
     SaveStaticPipelineCache();
     ShutdownGPULogging();
     for (auto& pools : separate_pools) {
@@ -1604,6 +1610,19 @@ bool Device::GetSuitability(bool requires_swapchain) {
         streamline_extensions = all;
         LOG_INFO(Render_Vulkan, "NVIDIA DLSS device extensions: {} ({})",
                  all ? "enabled" : "unavailable", names.empty() ? "none" : names);
+    }
+#endif
+
+#ifdef EGLANTINE_DLSS_NGX
+    // NGX's DLSS needs these two when the driver reports them, and refuses
+    // nothing when it does not.
+    for (const char* const name :
+         {VK_NVX_BINARY_IMPORT_EXTENSION_NAME, VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME}) {
+        if (supported_extensions.contains(name)) {
+            loaded_extensions.insert(name);
+        } else {
+            LOG_INFO(Render_Vulkan, "Device doesn't support extension {}", name);
+        }
     }
 #endif
 

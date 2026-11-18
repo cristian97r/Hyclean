@@ -27,6 +27,7 @@
 #define POST_SHADER_DIR "post_shaders"
 #define SCREENSHOTS_DIR "screenshots"
 #define SDMC_DIR "sdmc"
+#define NGX_DIR "ngx"
 #define SHADER_DIR "shader"
 #define STREAMLINE_DIR "streamline"
 #define FIDELITYFX_DIR "fidelityfx"

@@ -17,8 +17,8 @@
 #include "video_core/renderer_vulkan/vk_compute_pass.h"
 #include "video_core/renderer_vulkan/vk_dlss_network_probe.h"
 #include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
-#ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
+#ifdef EGLANTINE_DLSS
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #endif
 #include "video_core/renderer_vulkan/vk_render_pass_cache.h"
 #include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
@@ -331,12 +331,14 @@ public:
     std::unique_ptr<Fsr3Upscaler> fsr3_upscaler;
     bool fsr3_unsupported{};
 
-    /// The LOD bias Ocarina's FSR adds to mipmapped samplers this session (0 for other games or
-    /// upscalers), resolved on first use.
-    [[nodiscard]] f32 OcarinaFsrLodBias();
-    std::optional<f32> ocarina_fsr_lod_bias;
-    /// Set when the Ocarina upscaler fails during the session: samplers drop the bias again.
-    bool ocarina_fsr_failed{};
+    /// The LOD bias Ocarina's FSR adds to mipmapped samplers (0 for other games). Every Ocarina
+    /// sampler holds it; a variant without it serves while FSR does not run.
+    [[nodiscard]] f32 OcarinaFsrLodBias() const;
+    /// Set by the rasterizer while Ocarina's FSR upscales: samplers keep the bias. The upscaler
+    /// can change at any frame, so samplers check it on every bind.
+    bool ocarina_fsr_running{};
+    /// Sampler variants made without the FSR bias (the cost of switching live), for the log.
+    u64 ocarina_unbiased_samplers{};
     /// The game DLSS network's health check (ProbeGameDlssOutput), created on first use.
     std::unique_ptr<DlssNetworkProbe> dlss_network_probe;
     std::optional<std::chrono::steady_clock::time_point> fsr3_last_evaluation;
@@ -344,15 +346,17 @@ public:
     /// Draws an upscaler's RGBA16F output into the DLSS output and returns it to GENERAL.
     void DrawUpscaledOutput(Framebuffer* dst_framebuffer, VkImageView view, VkImage image,
                             VkSampler sampler);
-#ifdef EGLANTINE_STREAMLINE
-    /// NVIDIA's DLSS (through NVIDIA Streamline) in place of the game's,
-    /// before FSR 3.1, when the setting is on. Returns false to fall back to FSR 3.1.
+#ifdef EGLANTINE_DLSS
+    /// NVIDIA's DLSS (Streamline on Windows, the Lichii DLSS module on Linux) in place of the
+    /// game's, before FSR 3.1, when the setting is on. Returns false to fall back to FSR 3.1.
     bool UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageView& input_color,
                          ImageView& motion_vectors, ImageView& depth,
                          std::array<u32, 2> render_size, std::array<f32, 2> jitter,
                          std::array<f32, 2> motion_scale, bool reset);
-    std::unique_ptr<StreamlineDlssUpscaler> dlss_upscaler;
+    std::unique_ptr<DlssUpscaler> dlss_upscaler;
     bool dlss_unsupported{};
+    bool dlss_paused{}; ///< FSR 3.1 ran while DLSS was unticked; DLSS resumes with a reset
+
 #endif
 
     /// TemporalUpscale's history: its previous result (images[current]) and the image the next
@@ -953,7 +957,7 @@ private:
         bool drop_custom_border;
         bool srgb_border;
         bool drop_compare;
-        bool drop_lod_bias; ///< the image was written by the GPU: no Ocarina FSR LOD bias
+        bool drop_lod_bias; ///< FSR isn't running or the GPU wrote the image: no Ocarina FSR bias
         std::array<VkComponentSwizzle, 4> swizzle;
 
         bool operator==(const VariantKey&) const noexcept = default;
@@ -978,7 +982,7 @@ private:
     std::vector<Variant> variants;
 
     const Device* device_ptr{nullptr};
-    const bool* ocarina_fsr_failed{}; ///< TextureCacheRuntime::ocarina_fsr_failed
+    TextureCacheRuntime* runtime{}; ///< ocarina_fsr_running and the unbiased variant count
     Tegra::Texture::TSCEntry descriptor{};
     VkSamplerCreateInfo base_ci{};
     VkSamplerReductionModeEXT reduction_mode{VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT};

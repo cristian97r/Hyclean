@@ -199,6 +199,10 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "video_core/vulkan_common/streamline.h"
 #include "video_core/vulkan_common/streamline_frame_gen.h"
 #endif
+#ifdef EGLANTINE_DLSS_NGX
+#include "video_core/renderer_vulkan/vk_ngx_dlss.h"
+#endif
+#include "video_core/frame_gen_choice.h"
 
 #include <SDL3/SDL.h>
 
@@ -226,6 +230,21 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #endif
 
 #include "qt_common/gamemode.h"
+
+namespace {
+/// Whether DLSS can be chosen: its files are in place, as the settings panel checks.
+bool DlssInstalled() {
+#ifdef EGLANTINE_DLSS_NGX
+    return Vulkan::Ngx::Probe().setup == Vulkan::Ngx::Setup::Ready;
+#elif defined(EGLANTINE_STREAMLINE)
+    const Vulkan::Streamline::DlssFiles files = Vulkan::Streamline::FindDlssFiles();
+    return !files.interposer.empty() && files.dlss_missing.empty() && !files.dlss_mixed &&
+           (!files.model.empty() || !files.app_model.empty());
+#else
+    return false;
+#endif
+}
+} // namespace
 
 #ifdef _WIN32
 #include "common/windows/timer_resolution.h"
@@ -1188,17 +1207,13 @@ void MainWindow::InitializeWidgets() {
     game_fps_label = new QLabel();
     game_fps_label->setToolTip(tr("How many frames per second the game is currently displaying. "
                                   "This will vary from game to game and scene to scene."));
-    dlss_status_label = new QLabel();
-    dlss_status_label->setToolTip(
-        tr("NVIDIA DLSS is upscaling the game, in the mode shown. The window adapting filter "
-           "runs after it."));
     emu_frametime_label = new QLabel();
     emu_frametime_label->setToolTip(
         tr("Time taken to emulate a Switch frame, not counting framelimiting or v-sync. For "
            "full-speed emulation this should be at most 16.67 ms."));
 
     for (auto& label : {shader_building_label, res_scale_label, emu_speed_label, game_fps_label,
-                        dlss_status_label, emu_frametime_label}) {
+                        emu_frametime_label}) {
         label->setVisible(false);
         label->setFrameStyle(QFrame::NoFrame);
         label->setContentsMargins(4, 0, 4, 0);
@@ -1305,6 +1320,71 @@ void MainWindow::InitializeWidgets() {
                 frame_gen_status_button->repaint();
             });
     statusBar()->insertPermanentWidget(0, frame_gen_status_button);
+
+    // The temporal upscaler that replaces a game's DLSS: what runs now, and its settings.
+    upscaler_status_button = new QPushButton();
+    upscaler_status_button->setObjectName(QStringLiteral("TogglableStatusBarButton"));
+    upscaler_status_button->setProperty("chip", QStringLiteral("upscale"));
+    upscaler_status_button->setFocusPolicy(Qt::NoFocus);
+    upscaler_status_button->setCheckable(true);
+    upscaler_status_button->setVisible(false);
+    // DLSS, then FSR, then native. FSR 4 takes FSR's turn where it runs.
+    connect(upscaler_status_button, &QPushButton::clicked, this, [this] {
+        using enum VideoCore::UpscalerChoice;
+        switch (VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                          Settings::values.ocarina_fsr.GetValue())) {
+        case Dlss:
+            ChooseUpscaler(Fsr);
+            break;
+        case Fsr:
+            ChooseUpscaler(Native);
+            break;
+        case Native:
+            ChooseUpscaler(DlssInstalled() ? Dlss : Fsr);
+            break;
+        }
+    });
+    upscaler_status_button->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(upscaler_status_button, &QPushButton::customContextMenuRequested,
+            [this](const QPoint& menu_location) {
+                using enum VideoCore::UpscalerChoice;
+                QMenu context_menu;
+                QMenu* const upscaler = context_menu.addMenu(tr("Upscaler"));
+                upscaler->addAction(tr("Native"), [this] { ChooseUpscaler(Native); });
+                if (DlssInstalled()) {
+                    upscaler->addAction(tr("NVIDIA DLSS"), [this] { ChooseUpscaler(Dlss); });
+                }
+                upscaler->addAction(tr("AMD FSR"), [this] { ChooseUpscaler(Fsr); });
+
+                QMenu* const quality = context_menu.addMenu(tr("DLSS quality"));
+                for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
+                    const QString label = ConfigurationShared::TranslateMapText(translator, text);
+                    QAction* const action = quality->addAction(label, [this, mode] {
+                        Settings::values.nvidia_dlss_quality.SetValue(mode);
+                        Settings::RefreshNvidiaDlssRuntimeSettings();
+                    });
+                    action->setCheckable(true);
+                    action->setChecked(Settings::values.nvidia_dlss_quality.GetValue() == mode);
+                }
+                QMenu* const preset = context_menu.addMenu(tr("DLSS preset"));
+                for (const auto& [value, text] : ConfigurationShared::nvidia_dlss_preset_texts_map) {
+                    QAction* const action = preset->addAction(
+                        ConfigurationShared::TranslateMapText(translator, text), [this, value] {
+                            Settings::values.nvidia_dlss_preset.SetValue(value);
+                            Settings::RefreshNvidiaDlssRuntimeSettings();
+                        });
+                    action->setCheckable(true);
+                    action->setChecked(Settings::values.nvidia_dlss_preset.GetValue() == value);
+                }
+                context_menu.addSeparator();
+                context_menu.addAction(tr("Configure Upscaler..."), [this] {
+                    configure_graphics_next = true;
+                    OnConfigure();
+                });
+                context_menu.exec(upscaler_status_button->mapToGlobal(menu_location));
+                upscaler_status_button->repaint();
+            });
+    statusBar()->insertPermanentWidget(0, upscaler_status_button);
 
 #ifdef HAS_RESHADE
     post_shader_status_button = new QPushButton();
@@ -2970,7 +3050,8 @@ void MainWindow::OnEmulationStopped() {
     res_scale_label->setVisible(false);
     emu_speed_label->setVisible(false);
     game_fps_label->setVisible(false);
-    dlss_status_label->setVisible(false);
+    dlss_status_text.clear();
+    upscaler_status_button->setVisible(false);
     emu_frametime_label->setVisible(false);
     renderer_status_button->setEnabled(!UISettings::values.has_broken_vulkan);
     frame_gen_status_button->setEnabled(true);
@@ -4289,6 +4370,9 @@ void MainWindow::OnConfigure() {
             &MainWindow::OnLanguageChanged);
     connect(&configure_dialog, &ConfigureDialog::ExternalContentDirsChanged, this,
             &MainWindow::OnGameListRefresh);
+    if (std::exchange(configure_graphics_next, false)) {
+        configure_dialog.ShowGraphics();
+    }
 
     const auto result = configure_dialog.exec();
     if (result != QDialog::Accepted && !UISettings::values.configuration_applied &&
@@ -5824,30 +5908,10 @@ void MainWindow::UpdateStatusBar() {
     frame_gen_frames = frame_gen.generated_frames;
     frame_gen_state = frame_gen.state;
 
-    const auto dlss = QtCommon::system->GPU().Renderer().GetDlssStatus();
-    dlss_status_text.clear();
-    if (dlss.evaluations > dlss_evaluations) {
-        const auto mode_text = [this](Settings::NvidiaDlssQuality mode) {
-            return ConfigurationShared::TranslateMapText(
-                       translator, ConfigurationShared::nvidia_dlss_quality_texts_map.at(mode))
-                .toUpper();
-        };
-        dlss_status_text =
-            tr("DLSS %1 %2", "NVIDIA DLSS mode and model preset, e.g. DLSS DLAA M")
-                .arg(mode_text(dlss.mode),
-                     ConfigurationShared::TranslateMapText(
-                         translator,
-                         ConfigurationShared::nvidia_dlss_preset_texts_map.at(dlss.preset))
-                         .toUpper());
-        if (dlss.requested != Settings::NvidiaDlssQuality::Automatic &&
-            dlss.requested != dlss.mode) {
-            dlss_status_text += tr(" (%1 DOESN'T FIT)", "The DLSS mode the user chose")
-                                    .arg(mode_text(dlss.requested));
-        }
-    }
-    dlss_evaluations = dlss.evaluations;
-    dlss_status_label->setText(dlss_status_text);
-    dlss_status_label->setVisible(!dlss_status_text.isEmpty());
+    VideoCore::UpscalerStatus upscaler = QtCommon::system->GPU().Renderer().GetUpscalerStatus();
+    const VideoCore::Upscaler running = VideoCore::ActiveUpscaler(upscaler_status, upscaler);
+    upscaler_status = std::move(upscaler);
+    UpdateUpscalerButton(running);
 
     emit statsUpdated(results, shader_notify);
 
@@ -5959,6 +6023,119 @@ void MainWindow::UpdatePostShaderText() {
     post_shader_status_button->setText(QString::fromStdString(preset).toUpper());
 }
 #endif
+
+void MainWindow::ChooseUpscaler(VideoCore::UpscalerChoice choice) {
+    using enum VideoCore::UpscalerChoice;
+    Settings::values.nvidia_dlss.SetValue(choice == Dlss);
+    Settings::values.ocarina_fsr.SetValue(choice == Fsr);
+    Settings::RefreshNvidiaDlssRuntimeSettings();
+    UpdateUpscalerButton(VideoCore::Upscaler::None);
+}
+
+void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
+    const auto& status = upscaler_status;
+    const auto mode_text = [this](Settings::NvidiaDlssQuality mode) {
+        return ConfigurationShared::TranslateMapText(
+                   translator, ConfigurationShared::nvidia_dlss_quality_texts_map.at(mode))
+            .toUpper();
+    };
+    const auto choice = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue());
+    const bool dlss_chosen = choice == VideoCore::UpscalerChoice::Dlss;
+    if (choice == VideoCore::UpscalerChoice::Native) {
+        // Native: the chip stays, unchecked, so a click turns an upscaler on.
+        dlss_status_text.clear();
+        using VideoCore::GameDlssState;
+        const auto& game = status.game_dlss;
+        upscaler_status_button->setText(game.state == GameDlssState::Network ? tr("GAME DLSS")
+                                                                           : tr("NATIVE"));
+        QString tooltip = tr("No Lichii upscaler is chosen.");
+        if (game.state == GameDlssState::Network) {
+            tooltip += tr("<br>The game's own DLSS runs, translated for this GPU.");
+        } else if (game.state == GameDlssState::Checking) {
+            tooltip += tr("<br>The game's own DLSS is being checked; a plain Lichii upscale "
+                          "draws meanwhile.");
+        } else if (game.state == GameDlssState::Replacement) {
+            tooltip += tr("<br>The game's own DLSS can't run here (%1); a plain Lichii upscale "
+                          "draws.")
+                           .arg(QString::fromUtf8(VideoCore::GameDlssReasonText(game.reason)));
+        }
+        // Native over a scene a boot render-scale patch shrank: the game upscales it itself.
+        if (const auto scale = Settings::AppliedOcarinaRenderScale();
+            scale && emulation_running &&
+            QtCommon::system->GetApplicationProcessProgramID() == VideoCore::OCARINA_PROGRAM_ID) {
+            tooltip += tr("<br>Render scale %1 is set at game start; choose an upscaler or "
+                          "restart to change it.")
+                           .arg(ConfigurationShared::TranslateMapText(
+                               translator, ConfigurationShared::nvidia_dlss_quality_texts_map.at(
+                                               *scale)));
+        }
+        upscaler_status_button->setToolTip(
+            tooltip + tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and "
+                         "preset."));
+        upscaler_status_button->setChecked(false);
+        upscaler_status_button->setVisible(emulation_running);
+        return;
+    }
+    if (running == VideoCore::Upscaler::None) {
+        // Nothing evaluated this tick (a menu or a load): the chip keeps what ran last.
+        dlss_status_text.clear();
+        return;
+    }
+    QString badge;
+    QString tooltip;
+    switch (running) {
+    case VideoCore::Upscaler::Dlss:
+        badge = tr("DLSS");
+        dlss_status_text =
+            tr("DLSS %1 %2", "NVIDIA DLSS mode and model preset, e.g. DLSS DLAA M")
+                .arg(mode_text(status.mode),
+                     ConfigurationShared::TranslateMapText(
+                         translator,
+                         ConfigurationShared::nvidia_dlss_preset_texts_map.at(status.preset))
+                         .toUpper());
+        tooltip = tr("NVIDIA DLSS is upscaling the game.<br>Mode: %1, preset %2.")
+                      .arg(mode_text(status.mode),
+                           ConfigurationShared::TranslateMapText(
+                               translator,
+                               ConfigurationShared::nvidia_dlss_preset_texts_map.at(status.preset)));
+        break;
+    case VideoCore::Upscaler::Fsr3:
+    case VideoCore::Upscaler::Fsr4:
+        badge = running == VideoCore::Upscaler::Fsr4 ? tr("FSR 4") : tr("FSR");
+        dlss_status_text = running == VideoCore::Upscaler::Fsr4 ? tr("FSR 4") : tr("FSR 3.1");
+        tooltip = dlss_chosen
+                      ? tr("NVIDIA DLSS is chosen but AMD %1 runs: %2.")
+                            .arg(dlss_status_text,
+                                 status.dlss_fallback.empty()
+                                     ? tr("DLSS did not accept this frame; the log says why")
+                                     : QString::fromStdString(status.dlss_fallback))
+                      : tr("AMD %1 is upscaling the game.").arg(dlss_status_text);
+        break;
+    case VideoCore::Upscaler::None:
+        break;
+    }
+    if (const auto size = VideoCore::RunningUpscaleSize(status, running); size.output_width != 0) {
+        tooltip += tr("<br>Input %1x%2 -> %3x%4")
+                       .arg(size.render_width)
+                       .arg(size.render_height)
+                       .arg(size.output_width)
+                       .arg(size.output_height);
+    }
+    // Ocarina of Time's render scale is a built-in patch applied at boot: only that waits for
+    // the next start.
+    if (emulation_running &&
+        QtCommon::system->GetApplicationProcessProgramID() == VideoCore::OCARINA_PROGRAM_ID &&
+        Settings::OcarinaRenderScaleAtNextStart() != Settings::AppliedOcarinaRenderScale()) {
+        tooltip += tr("<br>The render scale for this quality applies at the game's next start.");
+    }
+    tooltip +=
+        tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and preset.");
+    upscaler_status_button->setText(badge);
+    upscaler_status_button->setToolTip(tooltip);
+    upscaler_status_button->setChecked(true);
+    upscaler_status_button->setVisible(true);
+}
 
 void MainWindow::UpdateFrameGenButton() {
     const bool enabled = Settings::values.frame_gen.GetValue();

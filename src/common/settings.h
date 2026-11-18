@@ -396,10 +396,6 @@ struct Values {
                                                     Specialization::Default,
                                                     true,
                                                     true};
-    // A Switch 2 game's own DLSS network (translated) in place of AMD FSR 3.1, where it runs and
-    // its output passes the checks.
-    SwitchableSetting<bool> game_dlss_network{linkage, false, "game_dlss_network",
-                                              Category::Renderer};
     SwitchableSetting<int, true> fsr_sharpening_slider{linkage,
 #ifdef __ANDROID__
                                                        0,
@@ -1161,6 +1157,8 @@ struct NvidiaDlssRuntimeSettings {
 
 void RefreshNvidiaDlssRuntimeSettings();
 NvidiaDlssRuntimeSettings GetNvidiaDlssRuntimeSettings();
+/// Changes with every RefreshNvidiaDlssRuntimeSettings: the renderer picks the upscaler again.
+u32 UpscalerSettingsGeneration();
 
 /// The NVIDIA DLSS quality whose render scale Ocarina of Time's built-in patch applies when the
 /// game starts: Balanced, Performance or Ultra Performance with NVIDIA DLSS on, docked.
@@ -1171,6 +1169,8 @@ std::optional<OcarinaRenderScale> OcarinaRenderScaleSetting();
 /// The quality whose render-scale patch the running game's main module got (none: unpatched).
 void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality);
 std::optional<NvidiaDlssQuality> AppliedOcarinaRenderScale();
+/// The render scale the settings now ask for, as a quality: what the next start applies.
+std::optional<NvidiaDlssQuality> OcarinaRenderScaleAtNextStart();
 
 constexpr u32 MIN_FRAME_GEN_MULTIPLIER = 2;
 constexpr u32 MAX_FRAME_GEN_MULTIPLIER = 4;

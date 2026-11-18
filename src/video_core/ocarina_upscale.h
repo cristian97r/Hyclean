@@ -52,10 +52,10 @@ constexpr OcarinaUpscalePass FindOcarinaUpscalePass(u64 native_key, u64 shader_h
     return None;
 }
 
-/// render_scaled: a DLSS render-scale patch shrank the scene to a size FSR 3.1 takes, so FSR 3.1
-/// reconstructs it when DLSS can't run.
+/// Only the upscaler the user chose runs: FSR 3.1 stands in only for chosen DLSS that can't run.
+/// Native stays native, also over a scene a boot render-scale patch shrank (the game upscales it).
 constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dlss_enabled,
-                                                    bool dlss_available, bool render_scaled,
+                                                    bool dlss_available,
                                                     std::string_view override) {
     if (override == "native") {
         return OcarinaUpscaleBackend::Native;
@@ -63,11 +63,19 @@ constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dls
     if (override == "fsr") {
         return OcarinaUpscaleBackend::Fsr;
     }
-    if ((dlss_enabled || override == "dlss") && dlss_available) {
+    const bool dlss_wanted = dlss_enabled || override == "dlss";
+    if (dlss_wanted && dlss_available) {
         return OcarinaUpscaleBackend::Dlss;
     }
-    return fsr_enabled || render_scaled ? OcarinaUpscaleBackend::Fsr
-                                        : OcarinaUpscaleBackend::Native;
+    return fsr_enabled || dlss_wanted ? OcarinaUpscaleBackend::Fsr
+                                      : OcarinaUpscaleBackend::Native;
+}
+
+/// Whether the scene is drawn jittered for the upscaler. FSR and DLSS take the same offset: in
+/// render pixels, the viewport moved by +jitter, so input texel k holds the scene at
+/// k + 0.5 - jitter, with motion vectors that exclude it (DLSS without MVJittered).
+constexpr bool OcarinaJitters(OcarinaUpscaleBackend backend) {
+    return backend != OcarinaUpscaleBackend::Native;
 }
 
 /// Texture LOD bias added to Ocarina's mipmapped samplers while FSR upscales. AMD recommends
@@ -76,11 +84,11 @@ constexpr float OcarinaFsrLodBias(OcarinaUpscaleBackend backend) {
     return backend == OcarinaUpscaleBackend::Fsr ? -1.58f : 0.0f;
 }
 
-/// Whether a sampler with that bias keeps it for an image: only docked (handheld isn't measured),
-/// not for images the GPU wrote (render targets would read a mip too sharp), and not once the
-/// upscaler failed this session (the game's own pass runs again).
-constexpr bool KeepOcarinaFsrLodBias(bool docked, bool upscaler_failed, bool gpu_written) {
-    return docked && !upscaler_failed && !gpu_written;
+/// Whether a sampler with that bias keeps it for an image: only while FSR runs (not with DLSS,
+/// off, or once it failed and the game's own pass runs again), only docked (handheld isn't
+/// measured), and not for images the GPU wrote (render targets would read a mip too sharp).
+constexpr bool KeepOcarinaFsrLodBias(bool fsr_running, bool docked, bool gpu_written) {
+    return fsr_running && docked && !gpu_written;
 }
 
 } // namespace VideoCommon

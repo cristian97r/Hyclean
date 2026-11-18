@@ -169,6 +169,7 @@ add_library(video_core STATIC
     rasterizer_interface.h
     renderer_base.cpp
     renderer_base.h
+    upscaler_status.h
 
     # Null
     renderer_null/null_rasterizer.cpp
@@ -694,33 +695,54 @@ if (ANDROID AND ARCHITECTURE_arm64)
     target_link_libraries(video_core PRIVATE adrenotools)
 endif()
 
-# NVIDIA DLSS through NVIDIA Streamline, in place of a game's DLSS (before FSR 3.1) when the
-# setting is on. Only Streamline's MIT-licensed headers are compiled in and nothing of NVIDIA's is
-# linked or copied: sl.interposer.dll and the DLSS plugins are loaded at run time from the user's PC.
-cmake_dependent_option(ENABLE_NVIDIA_DLSS "Enable NVIDIA DLSS through NVIDIA Streamline" ON
-                       "MSVC AND ARCHITECTURE_x86_64" OFF)
-set(EGLANTINE_STREAMLINE_SDK "" CACHE PATH
-    "NVIDIA Streamline SDK directory for its headers (empty: download them)")
+# NVIDIA DLSS, in place of a game's DLSS (before FSR 3.1) when the setting is on. Nothing of
+# NVIDIA's is compiled in: on MSVC only Streamline's MIT-licensed headers build the loader, and
+# sl.interposer.dll and the DLSS plugins are loaded at run time from the user's PC; elsewhere the
+# Lichii DLSS module (externals/lichii-dlss, MIT) is dlopened, whose NGX code is built out of
+# tree so no NVIDIA SDK is needed here.
+cmake_dependent_option(ENABLE_NVIDIA_DLSS "Enable NVIDIA DLSS" ON
+                       "(MSVC OR (UNIX AND NOT APPLE AND NOT ANDROID)) AND ARCHITECTURE_x86_64"
+                       OFF)
 if (ENABLE_NVIDIA_DLSS)
-    if (EGLANTINE_STREAMLINE_SDK)
-        set(STREAMLINE_INCLUDE_DIR "${EGLANTINE_STREAMLINE_SDK}/include")
+    if (MSVC)
+        set(EGLANTINE_STREAMLINE_SDK "" CACHE PATH
+            "NVIDIA Streamline SDK directory for its headers (empty: download them)")
+        if (EGLANTINE_STREAMLINE_SDK)
+            set(STREAMLINE_INCLUDE_DIR "${EGLANTINE_STREAMLINE_SDK}/include")
+        else()
+            AddJsonPackage(NAME streamline DOWNLOAD_ONLY)
+            set(STREAMLINE_INCLUDE_DIR "${streamline_SOURCE_DIR}/include")
+        endif()
+        target_sources(video_core PRIVATE
+            renderer_vulkan/vk_streamline_dlss.cpp
+            renderer_vulkan/vk_dlss_upscaler.cpp
+            renderer_vulkan/vk_dlss_upscaler.h
+            renderer_vulkan/vk_dlss_upscaler_common.h
+            vulkan_common/streamline.cpp
+            vulkan_common/streamline.h
+            vulkan_common/streamline_api.h
+            vulkan_common/streamline_frame_gen.cpp
+            vulkan_common/streamline_frame_gen.h
+        )
+        target_include_directories(video_core PRIVATE "${STREAMLINE_INCLUDE_DIR}")
+        target_link_libraries(video_core PRIVATE version wintrust crypt32)
+        target_compile_definitions(video_core PUBLIC EGLANTINE_STREAMLINE)
+        message(STATUS "NVIDIA DLSS through Streamline: ${STREAMLINE_INCLUDE_DIR}")
     else()
-        AddJsonPackage(NAME streamline DOWNLOAD_ONLY)
-        set(STREAMLINE_INCLUDE_DIR "${streamline_SOURCE_DIR}/include")
+        target_sources(video_core PRIVATE
+            renderer_vulkan/vk_ngx_dlss.cpp
+            renderer_vulkan/vk_ngx_dlss.h
+            renderer_vulkan/vk_dlss_upscaler.cpp
+            renderer_vulkan/vk_dlss_upscaler.h
+            renderer_vulkan/vk_dlss_upscaler_common.h
+        )
+        target_include_directories(video_core PRIVATE
+            "${CMAKE_SOURCE_DIR}/externals/lichii-dlss/include")
+        target_link_libraries(video_core PRIVATE ${CMAKE_DL_LIBS})
+        target_compile_definitions(video_core PUBLIC EGLANTINE_DLSS_NGX)
+        message(STATUS "NVIDIA DLSS through the Lichii DLSS module (NGX)")
     endif()
-    target_sources(video_core PRIVATE
-        renderer_vulkan/vk_streamline_dlss.cpp
-        renderer_vulkan/vk_streamline_dlss.h
-        vulkan_common/streamline.cpp
-        vulkan_common/streamline.h
-        vulkan_common/streamline_api.h
-        vulkan_common/streamline_frame_gen.cpp
-        vulkan_common/streamline_frame_gen.h
-    )
-    target_include_directories(video_core PRIVATE "${STREAMLINE_INCLUDE_DIR}")
-    target_link_libraries(video_core PRIVATE version wintrust crypt32)
-    target_compile_definitions(video_core PUBLIC EGLANTINE_STREAMLINE)
-    message(STATUS "NVIDIA DLSS through Streamline: ${STREAMLINE_INCLUDE_DIR}")
+    target_compile_definitions(video_core PUBLIC EGLANTINE_DLSS)
 endif()
 
 create_target_directory_groups(video_core)

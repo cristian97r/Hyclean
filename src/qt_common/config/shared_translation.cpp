@@ -179,12 +179,6 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "Options lower than 1X can cause artifacts."));
     INSERT(Settings, scaling_filter, tr("Window Adapting Filter:"),
            tr("Bilinear while HDR output is active."));
-    INSERT(Settings, game_dlss_network, tr("Use the game's own DLSS"),
-           tr("Runs a Switch 2 game's own DLSS (its upscaling network, translated for this GPU) "
-              "instead of AMD FSR 3.1 in its place.\nAMD FSR 3.1 still draws while the network is "
-              "checked, when it can't run on this GPU, with resolution scaling, and for the rest "
-              "of the session if its output fails Lichii's checks.\nTakes effect when a game "
-              "starts."));
     INSERT(Settings, frame_rate_limit, tr("Frame rate limit (Switch 2):"),
            tr("Rate of the Switch 2 VSync event that games start their frames on (default 60 Hz)."
               "\nAbove 60 Hz most games run too fast; use it with a game patch that follows real "
@@ -220,7 +214,7 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "instead of AMD FSR 3.1.\nNeeds NVIDIA's Streamline loader, and NVIDIA DLSS unless "
               "the NVIDIA app has downloaded it; Lichii does not ship NVIDIA's files. Use the "
               "download button below.\nIn Fire Emblem: Fortune's Weave it replaces the game's "
-              "DLSS while \"Use the game's own DLSS\" is off.\nIn The Legend of Zelda: Ocarina of Time it replaces the game's "
+              "DLSS.\nIn The Legend of Zelda: Ocarina of Time it replaces the game's "
               "upscaler only with Resolution at 1X; above 1X the game's own upscaler is used and the "
               "DLSS modes change nothing.\nThe window adapting filter (the FSR 1, Bilinear "
               "and similar button in the status bar) is separate and runs after DLSS. While DLSS "

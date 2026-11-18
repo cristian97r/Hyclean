@@ -37,6 +37,8 @@
 #include "video_core/renderer_vulkan/vk_swapchain.h"
 #include "video_core/textures/decoders.h"
 #include "video_core/vulkan_common/vk_enum_string_helper.h"
+#include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
+#include "video_core/renderer_vulkan/vk_fsr4_upscaler.h"
 #include "video_core/vulkan_common/vulkan_address_map.h"
 #include "video_core/vulkan_common/vulkan_debug_callback.h"
 #include "video_core/vulkan_common/vulkan_device.h"
@@ -45,8 +47,10 @@
 #include "video_core/vulkan_common/vulkan_memory_allocator.h"
 #include "video_core/vulkan_common/vulkan_surface.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
+#ifdef EGLANTINE_DLSS
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
+#endif
 #ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
 #include "video_core/vulkan_common/streamline.h"
 #include "video_core/vulkan_common/streamline_frame_gen.h"
 #endif
@@ -579,10 +583,18 @@ void RendererVulkan::RenderAppletCaptureLayer(
                             CaptureFormat, CaptureHdrPresent());
 }
 
-#ifdef EGLANTINE_STREAMLINE
-VideoCore::DlssStatus RendererVulkan::GetDlssStatus() const {
-    return StreamlineDlssUpscaler::Status();
-}
+VideoCore::UpscalerStatus RendererVulkan::GetUpscalerStatus() const {
+    VideoCore::UpscalerStatus status;
+    Fsr3Upscaler::Status(status);
+    Fsr4Upscaler::Status(status);
+    status.game_dlss = VideoCore::LastGameDlssStatus();
+#ifdef EGLANTINE_DLSS
+    DlssUpscaler::Status(status);
+    if (Settings::values.nvidia_dlss.GetValue()) {
+        status.dlss_fallback = DlssUpscaler::FallbackReason();
+    }
 #endif
+    return status;
+}
 
 } // namespace Vulkan
