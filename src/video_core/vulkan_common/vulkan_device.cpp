@@ -45,6 +45,9 @@
 #ifdef EGLANTINE_STREAMLINE
 #include "video_core/vulkan_common/streamline.h"
 #endif
+#ifdef EGLANTINE_DLSS_NGX
+#include "video_core/renderer_vulkan/vk_ngx_dlss.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1092,6 +1095,9 @@ Device::~Device() {
     if (streamline_attached) {
         Streamline::Stop();
     }
+#endif
+#ifdef EGLANTINE_DLSS_NGX
+    Ngx::Shutdown(*this);
 #endif
     SaveStaticPipelineCache();
     ShutdownGPULogging();

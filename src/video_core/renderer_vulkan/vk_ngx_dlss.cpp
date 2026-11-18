@@ -261,14 +261,16 @@ State Probe() {
 
 bool EnsureInit(const Device& device) {
     std::scoped_lock lock{mutex};
+    // ~Device calls Shutdown, so state here belongs to the live device. Shutting NGX down on a
+    // device that is already gone crashes in the driver, so a stale state is refused, not reset.
+    if ((ngx_inited || init_attempted) && attempted_device != *device.GetLogical()) {
+        LOG_ERROR(Render_Vulkan, "NVIDIA DLSS (NGX): still up on a destroyed device; using FSR 3.1");
+        return false;
+    }
     if (ngx_inited) {
-        if (attempted_device == *device.GetLogical()) {
-            return true;
-        }
-        // A new device: a new game. Bring NGX up on it.
-        module.shutdown();
-        ngx_inited = false;
-    } else if (init_attempted && attempted_device == *device.GetLogical()) {
+        return true;
+    }
+    if (init_attempted) {
         return false; // already tried for this device
     }
     attempted_device = *device.GetLogical();
@@ -349,8 +351,11 @@ bool EnsureInit(const Device& device) {
     return true;
 }
 
-void Shutdown() {
+void Shutdown(const Device& device) {
     std::scoped_lock lock{mutex};
+    if (attempted_device != *device.GetLogical()) {
+        return; // NGX never ran on this device
+    }
     if (module_loaded && ngx_inited) {
         module.shutdown();
     }
@@ -498,7 +503,8 @@ DlssUpscaler::~DlssUpscaler() {
         Ngx::ReleaseFeature(ngx_feature);
         ngx_feature = 0;
     }
-    Ngx::Shutdown();
+    // NGX itself stays up until the Device goes (Ngx::Shutdown in ~Device): Available() can
+    // bring it up without any upscaler, and two upscalers can share it.
 }
 
 bool DlssUpscaler::Upscale(const Inputs& in) {

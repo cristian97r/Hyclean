@@ -48,9 +48,10 @@ State Probe();
 // it failed for the panel. Safe to call concurrently; cheap after success.
 bool EnsureInit(const Device& device);
 
-// Releases NGX after the last DLSS feature is released. Call from the
-// upscaler destructor only, with the GPU idle.
-void Shutdown();
+// Releases NGX if it runs on this device, so the next game's device can bring
+// it up again. Called from ~Device, before the VkDevice is destroyed (NGX shut
+// down on a destroyed device crashes in the driver).
+void Shutdown(const Device& device);
 
 // Thin pass-throughs to the loaded module, for the upscaler. The command
 // buffers are VkCommandBuffer; the pointers are the module ABI structs.
