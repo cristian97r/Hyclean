@@ -184,15 +184,17 @@ ARG BUILD_TYPE=Release
 ARG BUILD_JOBS=24
 ARG BUILD_NICE=0
 ENV CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} BUILD_NICE=${BUILD_NICE} BUILD_TYPE=${BUILD_TYPE} \
-    LICHII_TESTS=ON LICHII_CMD=OFF
+    LICHII_TESTS=ON LICHII_CMD=OFF BUILD_TARGETS="tests config_tests"
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/src/.cache/cpm \
     --mount=type=cache,target=/src/.ccache \
     build-linux.sh \
     && cp /src/build-tests/bin/tests /usr/local/bin/lichii-tests \
+    && cp /src/build-tests/bin/config_tests /usr/local/bin/ \
     && rm -rf /src/build-tests
-CMD ["sh", "-c", "lichii-tests ${TESTS:-}"]
+# CONFIG_TESTS=1 runs the config tests (frontend config files) instead of the main binary.
+CMD ["sh", "-c", "if [ -n \"${CONFIG_TESTS:-}\" ]; then config_tests ${TESTS:-}; else lichii-tests ${TESTS:-}; fi"]
 
 # The shared JIT code cache test under ThreadSanitizer, run by the linux-tsan service. Everything
 # it links (common, dynarmic) is instrumented; no other target is built.

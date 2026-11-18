@@ -56,6 +56,7 @@ services:
     image: lichii-build:linux-tests
     environment:
       TESTS: ${TESTS:-}
+      CONFIG_TESTS: ${CONFIG_TESTS:-}
 
   # Shared JIT code cache test under ThreadSanitizer: docker compose run --build --rm linux-tsan
   linux-tsan:
