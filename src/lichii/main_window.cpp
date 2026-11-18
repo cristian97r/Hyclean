@@ -69,6 +69,7 @@
 #include "configuration/configure_input.h"
 #include "configuration/configure_network.h"
 #include "configuration/configure_per_game.h"
+#include "qt_common/game_list/game_list_p.h"
 #include "configuration/configure_tas.h"
 
 #include "util/clickable_label.h"
@@ -96,6 +97,9 @@
 #include <QFutureWatcher>
 #include <QGuiApplication>
 #include <QImage>
+#include <QListWidget>
+#include <QTabWidget>
+#include <QTimer>
 #include <QInputDialog>
 #include <QMimeData>
 #include <QPalette>
@@ -1867,6 +1871,11 @@ void MainWindow::ConnectWidgetEvents() {
     connect(game_list, &GameList::ShowList, this, &MainWindow::OnGameListShowList);
     connect(game_list, &GameList::PopulatingCompleted,
             [this] { multiplayer_state->UpdateGameList(game_list->GetModel()); });
+    // Diagnostic: screenshots of settings pages for reviews, off unless the variable is set.
+    if (const QString ui_shot = qEnvironmentVariable("LICHII_UI_SHOT"); !ui_shot.isEmpty()) {
+        connect(game_list, &GameList::PopulatingCompleted, this,
+                [this, ui_shot] { RunUiShot(ui_shot); }, Qt::SingleShotConnection);
+    }
     connect(game_list, &GameList::SaveConfig, this, &MainWindow::OnSaveConfig);
 
     connect(game_list, &GameList::OpenPerGameGeneralRequested, this,
@@ -4666,6 +4675,92 @@ void MainWindow::OnToggleGraphicsAPI() {
 void MainWindow::OnConfigurePerGame() {
     const u64 title_id = QtCommon::system->GetApplicationProcessProgramID();
     OpenPerGameConfiguration(title_id, current_game_path.toStdString());
+}
+
+// Specs: "configure:<page>[:<tab>]" (the selector list item and one of its tabs by title), and
+// "properties:<program id hex>[:<tab>]" (the game's properties, found in the game list). The
+// dialog is never accepted, so nothing is saved.
+void MainWindow::RunUiShot(const QString& request) {
+    const auto finish = [](int code) {
+        QTimer::singleShot(0, [code] { QCoreApplication::exit(code); });
+    };
+    const QStringList halves = request.split(QLatin1Char('|'));
+    const QStringList spec = halves.value(0).split(QLatin1Char(':'));
+    const QString out = halves.value(1);
+    if (halves.size() != 2 || out.isEmpty() || spec.size() < 2) {
+        LOG_ERROR(Frontend, "LICHII_UI_SHOT: expected <spec>|<out.png>, got {}",
+                  request.toStdString());
+        return finish(2);
+    }
+    std::unique_ptr<QDialog> dialog;
+    QTabWidget* tabs = nullptr;
+    if (spec[0] == QStringLiteral("configure")) {
+        Settings::SetConfiguringGlobal(true);
+        auto configure =
+            std::make_unique<ConfigureDialog>(this, hotkey_registry, input_subsystem.get(),
+                                              vk_device_records, *QtCommon::system, true);
+        auto* const pages = configure->findChild<QListWidget*>(QStringLiteral("selectorList"));
+        const auto found = pages ? pages->findItems(spec[1], Qt::MatchExactly)
+                                 : QList<QListWidgetItem*>{};
+        if (found.isEmpty()) {
+            LOG_ERROR(Frontend, "LICHII_UI_SHOT: no settings page {}", spec[1].toStdString());
+            return finish(2);
+        }
+        pages->setCurrentItem(found.front());
+        dialog = std::move(configure);
+    } else if (spec[0] == QStringLiteral("properties")) {
+        bool ok = false;
+        const u64 program_id = spec[1].toULongLong(&ok, 16);
+        QString path;
+        const auto* const model = game_list->GetModel();
+        for (int row = 0; ok && path.isEmpty() && row < model->rowCount(); ++row) {
+            const QModelIndex folder = model->index(row, 0);
+            const auto check = [&](const QModelIndex& item) {
+                if (item.data(GameListItemPath::ProgramIdRole).toULongLong() == program_id) {
+                    path = item.data(GameListItemPath::FullPathRole).toString();
+                }
+            };
+            check(folder);
+            for (int child = 0; path.isEmpty() && child < model->rowCount(folder); ++child) {
+                check(model->index(child, 0, folder));
+            }
+        }
+        if (path.isEmpty()) {
+            LOG_ERROR(Frontend, "LICHII_UI_SHOT: {} is not in the game list",
+                      spec[1].toStdString());
+            return finish(2);
+        }
+        Settings::SetConfiguringGlobal(false);
+        auto properties = std::make_unique<ConfigurePerGame>(this, program_id, path.toStdString(),
+                                                             vk_device_records, *QtCommon::system);
+        properties->LoadFromFile(Core::GetGameFileFromPath(QtCommon::vfs, path.toStdString()));
+        dialog = std::move(properties);
+    } else {
+        LOG_ERROR(Frontend, "LICHII_UI_SHOT: unknown kind {}", spec[0].toStdString());
+        return finish(2);
+    }
+    tabs = dialog->findChild<QTabWidget*>(QStringLiteral("tabWidget"));
+    if (spec.size() > 2 && tabs != nullptr) {
+        int index = -1;
+        for (int i = 0; i < tabs->count(); ++i) {
+            if (tabs->isTabVisible(i) && tabs->tabText(i).remove(QLatin1Char('&')) == spec[2]) {
+                index = i;
+            }
+        }
+        if (index < 0) {
+            LOG_ERROR(Frontend, "LICHII_UI_SHOT: no tab {}", spec[2].toStdString());
+            return finish(2);
+        }
+        tabs->setCurrentIndex(index);
+    }
+    dialog->show();
+    QCoreApplication::processEvents();
+    const bool saved = dialog->grab().save(out);
+    LOG_INFO(Frontend, "LICHII_UI_SHOT: {} -> {} ({})", halves[0].toStdString(),
+             out.toStdString(), saved ? "saved" : "failed");
+    dialog->hide();
+    Settings::RestoreGlobalState(false);
+    finish(saved ? 0 : 1);
 }
 
 void MainWindow::OpenPerGameConfiguration(u64 title_id, const std::string& file_name) {
