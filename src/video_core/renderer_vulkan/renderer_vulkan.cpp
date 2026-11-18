@@ -584,10 +584,9 @@ void RendererVulkan::RenderAppletCaptureLayer(
 }
 
 VideoCore::UpscalerStatus RendererVulkan::GetUpscalerStatus() const {
-    VideoCore::UpscalerStatus status{
-        .fsr3 = Fsr3Upscaler::Evaluations(),
-        .fsr4 = Fsr4Upscaler::Evaluations(),
-    };
+    VideoCore::UpscalerStatus status;
+    Fsr3Upscaler::Status(status);
+    Fsr4Upscaler::Status(status);
 #ifdef EGLANTINE_DLSS
     DlssUpscaler::Status(status);
     if (Settings::values.nvidia_dlss.GetValue()) {

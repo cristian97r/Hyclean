@@ -130,6 +130,17 @@ void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality) {
                                        std::memory_order_relaxed);
 }
 
+std::optional<NvidiaDlssQuality> OcarinaRenderScaleAtNextStart() {
+    if (const auto dlss = OcarinaDlssRenderScale()) {
+        return dlss;
+    }
+    if (const auto scale = OcarinaRenderScaleSetting()) {
+        // Balanced, Performance and Ultra Performance sit 2 apart in the two enums.
+        return static_cast<NvidiaDlssQuality>(static_cast<u32>(*scale) + 2);
+    }
+    return std::nullopt;
+}
+
 std::optional<NvidiaDlssQuality> AppliedOcarinaRenderScale() {
     const u32 value = applied_ocarina_render_scale.load(std::memory_order_relaxed);
     if (value == 0) {

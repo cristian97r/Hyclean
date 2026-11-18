@@ -1361,20 +1361,9 @@ void MainWindow::InitializeWidgets() {
                 upscaler->addAction(tr("AMD FSR"), [choose] { choose(false, true); });
                 upscaler->addAction(tr("Off"), [choose] { choose(false, false); });
 
-                // Ocarina of Time's render scale for these qualities is a built-in patch: it
-                // changes when the game starts again.
-                const bool ocarina =
-                    emulation_running &&
-                    QtCommon::system->GetApplicationProcessProgramID() ==
-                        VideoCore::OCARINA_PROGRAM_ID;
                 QMenu* const quality = context_menu.addMenu(tr("DLSS quality"));
                 for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
-                    QString label = ConfigurationShared::TranslateMapText(translator, text);
-                    if (ocarina && (mode == Settings::NvidiaDlssQuality::Balanced ||
-                                    mode == Settings::NvidiaDlssQuality::Performance ||
-                                    mode == Settings::NvidiaDlssQuality::UltraPerformance)) {
-                        label += tr(" (next start)");
-                    }
+                    const QString label = ConfigurationShared::TranslateMapText(translator, text);
                     QAction* const action = quality->addAction(label, [this, mode] {
                         Settings::values.nvidia_dlss_quality.SetValue(mode);
                         Settings::RefreshNvidiaDlssRuntimeSettings();
@@ -6048,9 +6037,28 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
             .toUpper();
     };
     const bool dlss_chosen = Settings::values.nvidia_dlss.GetValue();
+    const bool upscaler_chosen = dlss_chosen || Settings::values.ocarina_fsr.GetValue();
+    if (!upscaler_chosen) {
+        // Off: the chip stays, unchecked, so a click turns it back on.
+        dlss_status_text.clear();
+        upscaler_status_button->setText(tr("UPSCALER"));
+        upscaler_status_button->setToolTip(
+            tr("No upscaler is chosen.<br>Click: DLSS, FSR, off. Right-click: upscaler, DLSS "
+               "quality and preset."));
+        upscaler_status_button->setChecked(false);
+        upscaler_status_button->setVisible(emulation_running);
+        return;
+    }
+    if (running == VideoCore::Upscaler::None) {
+        // Nothing evaluated this tick (a menu or a load): the chip keeps what ran last.
+        dlss_status_text.clear();
+        return;
+    }
+    QString badge;
     QString tooltip;
     switch (running) {
     case VideoCore::Upscaler::Dlss:
+        badge = tr("DLSS");
         dlss_status_text =
             tr("DLSS %1 %2", "NVIDIA DLSS mode and model preset, e.g. DLSS DLAA M")
                 .arg(mode_text(status.mode),
@@ -6058,15 +6066,15 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
                          translator,
                          ConfigurationShared::nvidia_dlss_preset_texts_map.at(status.preset))
                          .toUpper());
-        if (status.requested != Settings::NvidiaDlssQuality::Automatic &&
-            status.requested != status.mode) {
-            dlss_status_text += tr(" (%1 DOESN'T FIT)", "The DLSS mode the user chose")
-                                    .arg(mode_text(status.requested));
-        }
-        tooltip = tr("NVIDIA DLSS is upscaling the game, in the mode shown.");
+        tooltip = tr("NVIDIA DLSS is upscaling the game.<br>Mode: %1, preset %2.")
+                      .arg(mode_text(status.mode),
+                           ConfigurationShared::TranslateMapText(
+                               translator,
+                               ConfigurationShared::nvidia_dlss_preset_texts_map.at(status.preset)));
         break;
     case VideoCore::Upscaler::Fsr3:
     case VideoCore::Upscaler::Fsr4:
+        badge = running == VideoCore::Upscaler::Fsr4 ? tr("FSR 4") : tr("FSR");
         dlss_status_text = running == VideoCore::Upscaler::Fsr4 ? tr("FSR 4") : tr("FSR 3.1");
         tooltip = dlss_chosen
                       ? tr("NVIDIA DLSS is chosen but AMD %1 runs: %2.")
@@ -6077,16 +6085,24 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
                       : tr("AMD %1 is upscaling the game.").arg(dlss_status_text);
         break;
     case VideoCore::Upscaler::None:
-        // Nothing evaluated this tick (a menu or a load): the chip keeps what ran last.
-        dlss_status_text.clear();
-        return;
+        break;
+    }
+    if (const auto size = VideoCore::RunningUpscaleSize(status, running); size.output_width != 0) {
+        tooltip += tr("<br>Input %1x%2 -> %3x%4")
+                       .arg(size.render_width)
+                       .arg(size.render_height)
+                       .arg(size.output_width)
+                       .arg(size.output_height);
+    }
+    // Ocarina of Time's render scale is a built-in patch applied at boot: only that waits for
+    // the next start.
+    if (emulation_running &&
+        QtCommon::system->GetApplicationProcessProgramID() == VideoCore::OCARINA_PROGRAM_ID &&
+        Settings::OcarinaRenderScaleAtNextStart() != Settings::AppliedOcarinaRenderScale()) {
+        tooltip += tr("<br>The render scale for this quality applies at the game's next start.");
     }
     tooltip += tr("<br>Click: DLSS, FSR, off. Right-click: upscaler, DLSS quality and preset.");
-    if (emulation_running &&
-        QtCommon::system->GetApplicationProcessProgramID() == VideoCore::OCARINA_PROGRAM_ID) {
-        tooltip += tr("<br>Ocarina of Time switches the upscaler at its next start.");
-    }
-    upscaler_status_button->setText(dlss_status_text);
+    upscaler_status_button->setText(badge);
     upscaler_status_button->setToolTip(tooltip);
     upscaler_status_button->setChecked(true);
     upscaler_status_button->setVisible(true);

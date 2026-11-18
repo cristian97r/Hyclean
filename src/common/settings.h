@@ -1173,6 +1173,8 @@ std::optional<OcarinaRenderScale> OcarinaRenderScaleSetting();
 /// The quality whose render-scale patch the running game's main module got (none: unpatched).
 void SetAppliedOcarinaRenderScale(std::optional<NvidiaDlssQuality> quality);
 std::optional<NvidiaDlssQuality> AppliedOcarinaRenderScale();
+/// The render scale the settings now ask for, as a quality: what the next start applies.
+std::optional<NvidiaDlssQuality> OcarinaRenderScaleAtNextStart();
 
 constexpr u32 MIN_FRAME_GEN_MULTIPLIER = 2;
 constexpr u32 MAX_FRAME_GEN_MULTIPLIER = 4;

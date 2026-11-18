@@ -102,3 +102,20 @@ TEST_CASE("The status bar names the upscaler that evaluated since the last tick"
     now.dlss = 6;
     REQUIRE(ActiveUpscaler(before, now) == Upscaler::Dlss);
 }
+
+TEST_CASE("The status bar tooltip shows the running upscaler's input and output size",
+          "[dlss_mode]") {
+    using VideoCore::RunningUpscaleSize;
+    using VideoCore::Upscaler;
+    using VideoCore::UpscaleSize;
+    constexpr UpscaleSize oot{1280, 720, 3840, 2160};
+    static_assert(UpscaleSize::Unpack(oot.Pack()) == oot);
+    static_assert(UpscaleSize::Unpack(UpscaleSize{7680, 4320, 7680, 4320}.Pack()) ==
+                  UpscaleSize{7680, 4320, 7680, 4320});
+    const VideoCore::UpscalerStatus status{
+        .dlss_size = oot, .fsr3_size = {1920, 1080, 2560, 1440}, .fsr4_size = {}};
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Dlss) == oot);
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Fsr3) == UpscaleSize{1920, 1080, 2560, 1440});
+    REQUIRE(RunningUpscaleSize(status, Upscaler::Fsr4) == UpscaleSize{});
+    REQUIRE(RunningUpscaleSize(status, Upscaler::None) == UpscaleSize{});
+}

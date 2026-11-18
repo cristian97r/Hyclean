@@ -33,5 +33,7 @@ void ClearOutput(vk::CommandBuffer& cmdbuf, VkImage image);
 extern std::atomic<u64> evaluations;
 /// The last evaluation's mode, requested mode and preset, a byte each.
 extern std::atomic<u32> last_evaluation;
+/// The last evaluation's render and output size (VideoCore::UpscaleSize::Pack).
+extern std::atomic<u64> last_size;
 
 } // namespace Vulkan::Dlss

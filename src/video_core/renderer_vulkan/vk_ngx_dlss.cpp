@@ -747,6 +747,12 @@ bool DlssUpscaler::Upscale(const Inputs& in) {
                                       (static_cast<u32>(requested) << 8) |
                                       (static_cast<u32>(preset_setting) << 16),
                                   std::memory_order_relaxed);
+            Dlss::last_size.store(VideoCore::UpscaleSize{in.render_size.width,
+                                                         in.render_size.height,
+                                                         in.upscale_size.width,
+                                                         in.upscale_size.height}
+                                      .Pack(),
+                                  std::memory_order_relaxed);
             Dlss::evaluations.fetch_add(1, std::memory_order_release);
             // NGX doesn't report the model it picked, but its memory tells them apart: at
             // 3840x2160 output DLSS 310.9 allocates about 198 MB for presets E and F and 307 MB

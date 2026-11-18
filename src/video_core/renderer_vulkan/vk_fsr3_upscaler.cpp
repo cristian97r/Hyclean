@@ -48,6 +48,7 @@ namespace Vulkan {
 namespace {
 
 std::atomic<u64> evaluations{};
+std::atomic<u64> last_size{};
 
 // cbFSR3Upscaler in ffx_fsr3upscaler_callbacks_glsl.h (std140; the SDK's Fsr3UpscalerConstants).
 struct Constants {
@@ -746,11 +747,16 @@ void Fsr3Upscaler::Upscale(const Inputs& in) {
                                MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT));
     });
     frame_parity = q;
+    last_size.store(VideoCore::UpscaleSize{in.render_size.width, in.render_size.height,
+                                           in.upscale_size.width, in.upscale_size.height}
+                        .Pack(),
+                    std::memory_order_relaxed);
     evaluations.fetch_add(1, std::memory_order_relaxed);
 }
 
-u64 Fsr3Upscaler::Evaluations() noexcept {
-    return evaluations.load(std::memory_order_relaxed);
+void Fsr3Upscaler::Status(VideoCore::UpscalerStatus& status) noexcept {
+    status.fsr3 = evaluations.load(std::memory_order_relaxed);
+    status.fsr3_size = VideoCore::UpscaleSize::Unpack(last_size.load(std::memory_order_relaxed));
 }
 
 } // namespace Vulkan

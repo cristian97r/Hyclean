@@ -16,6 +16,7 @@ namespace Vulkan::Dlss {
 
 std::atomic<u64> evaluations{};
 std::atomic<u32> last_evaluation{};
+std::atomic<u64> last_size{};
 
 int EnvInt(const char* name, int fallback) {
     const char* const value = std::getenv(name);
@@ -143,6 +144,8 @@ void DlssUpscaler::Status(VideoCore::UpscalerStatus& status) {
     status.mode = static_cast<Settings::NvidiaDlssQuality>(last & 0xff);
     status.requested = static_cast<Settings::NvidiaDlssQuality>((last >> 8) & 0xff);
     status.preset = static_cast<Settings::NvidiaDlssPreset>((last >> 16) & 0xff);
+    status.dlss_size =
+        VideoCore::UpscaleSize::Unpack(Dlss::last_size.load(std::memory_order_relaxed));
 }
 
 } // namespace Vulkan
