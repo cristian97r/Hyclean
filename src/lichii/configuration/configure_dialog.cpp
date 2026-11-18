@@ -278,6 +278,11 @@ void ConfigureDialog::RetranslateUI() {
     ui->tabWidget->setCurrentIndex(old_index);
 }
 
+void ConfigureDialog::ShowGraphics() {
+    ui->selectorList->setCurrentRow(3); // PopulateSelectionList's Graphics item
+    ui->tabWidget->setCurrentWidget(graphics_tab.get());
+}
+
 void ConfigureDialog::HandleApplyButtonClicked() {
     UISettings::values.configuration_applied = true;
     ApplyConfiguration();

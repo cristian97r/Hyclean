@@ -459,6 +459,23 @@ ngx_module_image ModuleImage(const DlssUpscaler::Image& image, VkExtent2D size) 
 
 } // Anonymous namespace
 
+std::string DlssUpscaler::FallbackReason() {
+    const Ngx::State state = Ngx::Probe();
+    switch (state.setup) {
+    case Ngx::Setup::Ready:
+        return {};
+    case Ngx::Setup::NotInstalled:
+        return "DLSS is not set up (Graphics settings, Download)";
+    case Ngx::Setup::WrongAbi:
+        return "Lichii's DLSS module is from another Lichii version";
+    case Ngx::Setup::NoNvidia:
+        return "no NVIDIA driver with NGX (libnvidia-ngx.so.1)";
+    case Ngx::Setup::InitFailed:
+        return "DLSS could not start: " + state.detail;
+    }
+    return {};
+}
+
 bool DlssUpscaler::Available(const Device& device) {
     // As on Windows, where Streamline only starts with the setting on. Read each call, so
     // unticking it falls back to FSR 3.1 while the game runs.

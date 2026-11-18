@@ -9,13 +9,14 @@
 #include <array>
 #include <atomic>
 #include <optional>
+#include <string>
 
 #include "common/common_types.h"
 #include "common/settings_enums.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 
 namespace VideoCore {
-struct DlssStatus;
+struct UpscalerStatus;
 }
 
 namespace Vulkan {
@@ -79,8 +80,11 @@ public:
         return failed.load();
     }
 
-    /// Evaluations that succeeded in this process, for the status bar.
-    [[nodiscard]] static VideoCore::DlssStatus Status();
+    /// Evaluations that succeeded in this process and the last one's mode, for the status bar.
+    static void Status(VideoCore::UpscalerStatus& status);
+
+    /// Why DLSS can't run though the setting is on; empty when it can (or has not been tried).
+    [[nodiscard]] static std::string FallbackReason();
 
     [[nodiscard]] VkImage OutputImage() const noexcept {
         return *output_image;

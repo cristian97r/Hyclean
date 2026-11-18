@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "common/settings.h"
 #include "video_core/dlss_mode.h"
+#include "video_core/upscaler_status.h"
 
 namespace Mode = VideoCommon::DlssMode;
 using Quality = Settings::NvidiaDlssQuality;
@@ -85,4 +86,19 @@ TEST_CASE("Automatic DLSS checks other modes when its ratio heuristic is invalid
                                      });
     REQUIRE(result.mode == Quality::Balanced);
     REQUIRE_FALSE(result.fallback);
+}
+
+TEST_CASE("The status bar names the upscaler that evaluated since the last tick", "[dlss_mode]") {
+    using VideoCore::ActiveUpscaler;
+    using VideoCore::Upscaler;
+    const VideoCore::UpscalerStatus before{.dlss = 5, .fsr3 = 7, .fsr4 = 2};
+    VideoCore::UpscalerStatus now = before;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::None);
+    now.fsr3 = 8;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Fsr3);
+    now.fsr4 = 3;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Fsr4);
+    // DLSS ticked again after an FSR stretch: DLSS wins the tick it ran in.
+    now.dlss = 6;
+    REQUIRE(ActiveUpscaler(before, now) == Upscaler::Dlss);
 }

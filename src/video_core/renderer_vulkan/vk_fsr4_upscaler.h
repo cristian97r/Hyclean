@@ -67,6 +67,9 @@ public:
     /// layout). False when FSR 4 can't run (the caller then uses FSR 3.1 from now on).
     bool Upscale(const Inputs& inputs);
 
+    /// Evaluations recorded in this process, for the status bar.
+    [[nodiscard]] static u64 Evaluations() noexcept;
+
     [[nodiscard]] bool Failed() const noexcept {
         return failed.load();
     }

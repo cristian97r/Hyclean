@@ -376,6 +376,11 @@ bool DlssUpscaler::Available(const Device&) {
     return Streamline::IsDlssAvailable();
 }
 
+std::string DlssUpscaler::FallbackReason() {
+    return Streamline::IsDlssAvailable() ? std::string{}
+                                         : "NVIDIA Streamline did not start; the log says why";
+}
+
 DlssUpscaler::~DlssUpscaler() {
     // Not scheduler.Finish(): this runs when the renderer goes away, after the game's channels are
     // released, and a submit would touch their state. Nothing more gets recorded by then.

@@ -32,6 +32,8 @@
 
 namespace Vulkan {
 namespace {
+std::atomic<u64> evaluations{};
+
 constexpr VkFormat OUTPUT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
 constexpr VkImageUsageFlags OUTPUT_USAGE = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
                                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -459,7 +461,12 @@ bool Fsr4Upscaler::Upscale(const Inputs& in) {
         cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, {}, {}, back);
     });
+    evaluations.fetch_add(1, std::memory_order_relaxed);
     return true;
+}
+
+u64 Fsr4Upscaler::Evaluations() noexcept {
+    return evaluations.load(std::memory_order_relaxed);
 }
 
 } // namespace Vulkan

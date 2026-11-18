@@ -37,6 +37,8 @@
 #include "video_core/renderer_vulkan/vk_swapchain.h"
 #include "video_core/textures/decoders.h"
 #include "video_core/vulkan_common/vk_enum_string_helper.h"
+#include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
+#include "video_core/renderer_vulkan/vk_fsr4_upscaler.h"
 #include "video_core/vulkan_common/vulkan_address_map.h"
 #include "video_core/vulkan_common/vulkan_debug_callback.h"
 #include "video_core/vulkan_common/vulkan_device.h"
@@ -581,10 +583,18 @@ void RendererVulkan::RenderAppletCaptureLayer(
                             CaptureFormat, CaptureHdrPresent());
 }
 
+VideoCore::UpscalerStatus RendererVulkan::GetUpscalerStatus() const {
+    VideoCore::UpscalerStatus status{
+        .fsr3 = Fsr3Upscaler::Evaluations(),
+        .fsr4 = Fsr4Upscaler::Evaluations(),
+    };
 #ifdef EGLANTINE_DLSS
-VideoCore::DlssStatus RendererVulkan::GetDlssStatus() const {
-    return DlssUpscaler::Status();
-}
+    DlssUpscaler::Status(status);
+    if (Settings::values.nvidia_dlss.GetValue()) {
+        status.dlss_fallback = DlssUpscaler::FallbackReason();
+    }
 #endif
+    return status;
+}
 
 } // namespace Vulkan

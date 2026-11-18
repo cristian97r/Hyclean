@@ -60,6 +60,9 @@ public:
     /// be sampled by a fragment shader.
     void Upscale(const Inputs& inputs);
 
+    /// Evaluations recorded in this process, for the status bar.
+    [[nodiscard]] static u64 Evaluations() noexcept;
+
     [[nodiscard]] VkImage OutputImage() const noexcept;
     [[nodiscard]] VkImageView OutputView() const noexcept;
 

@@ -137,15 +137,12 @@ void DlssUpscaler::CreateOutput(VkExtent2D upscale_size) {
     });
 }
 
-VideoCore::DlssStatus DlssUpscaler::Status() {
-    const u64 count = Dlss::evaluations.load(std::memory_order_acquire);
+void DlssUpscaler::Status(VideoCore::UpscalerStatus& status) {
+    status.dlss = Dlss::evaluations.load(std::memory_order_acquire);
     const u32 last = Dlss::last_evaluation.load(std::memory_order_relaxed);
-    return {
-        .evaluations = count,
-        .mode = static_cast<Settings::NvidiaDlssQuality>(last & 0xff),
-        .requested = static_cast<Settings::NvidiaDlssQuality>((last >> 8) & 0xff),
-        .preset = static_cast<Settings::NvidiaDlssPreset>((last >> 16) & 0xff),
-    };
+    status.mode = static_cast<Settings::NvidiaDlssQuality>(last & 0xff);
+    status.requested = static_cast<Settings::NvidiaDlssQuality>((last >> 8) & 0xff);
+    status.preset = static_cast<Settings::NvidiaDlssPreset>((last >> 16) & 0xff);
 }
 
 } // namespace Vulkan

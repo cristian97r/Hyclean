@@ -74,9 +74,7 @@ public:
 #endif
     }
 
-#ifdef EGLANTINE_DLSS
-    [[nodiscard]] VideoCore::DlssStatus GetDlssStatus() const override;
-#endif
+    [[nodiscard]] VideoCore::UpscalerStatus GetUpscalerStatus() const override;
 
     void RequestGpuBusySample() override {
         scheduler.RequestGpuBusySample();

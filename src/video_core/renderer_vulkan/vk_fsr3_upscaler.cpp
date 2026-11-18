@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <algorithm>
+#include <atomic>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
@@ -45,6 +46,8 @@
 
 namespace Vulkan {
 namespace {
+
+std::atomic<u64> evaluations{};
 
 // cbFSR3Upscaler in ffx_fsr3upscaler_callbacks_glsl.h (std140; the SDK's Fsr3UpscalerConstants).
 struct Constants {
@@ -743,6 +746,11 @@ void Fsr3Upscaler::Upscale(const Inputs& in) {
                                MemoryBarrier(VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT));
     });
     frame_parity = q;
+    evaluations.fetch_add(1, std::memory_order_relaxed);
+}
+
+u64 Fsr3Upscaler::Evaluations() noexcept {
+    return evaluations.load(std::memory_order_relaxed);
 }
 
 } // namespace Vulkan
