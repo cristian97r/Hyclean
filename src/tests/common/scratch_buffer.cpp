@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <new>
 #include <span>
 #include <catch2/catch_test_macros.hpp>
 #include "common/common_types.h"
@@ -194,6 +195,15 @@ TEST_CASE("ScratchBuffer: Span Writes", "[common]") {
         buf_span[i] = new_value;
         REQUIRE(buf[i] == new_value);
     }
+}
+
+TEST_CASE("ScratchBuffer: a failed resize_destructive leaves an empty, usable buffer", "[common]") {
+    ScratchBuffer<u8> buf(16);
+    REQUIRE_THROWS_AS(buf.resize_destructive(std::size_t{1} << 62), std::bad_alloc);
+    REQUIRE(buf.capacity() == 0U);
+    buf.resize_destructive(32);
+    REQUIRE(buf.capacity() == 32U);
+    std::memset(buf.data(), 1, 32);
 }
 
 } // namespace Common

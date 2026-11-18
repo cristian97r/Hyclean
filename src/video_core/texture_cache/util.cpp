@@ -567,6 +567,10 @@ void SwizzleBlockLinearImage(Tegra::MemoryManager& gpu_memory, GPUVAddr gpu_addr
 
     for (s32 layer = 0; layer < info.resources.layers; ++layer) {
         const std::span<const u8> src = input.subspan(host_offset);
+        // GuestMemory::Read is noexcept: allocate its copy here, where bad_alloc can reach the caller.
+        if (!gpu_memory.GetSpan(gpu_addr + guest_offset, subresource_size)) {
+            tmp_buffer.resize_destructive(subresource_size);
+        }
         {
             Tegra::Memory::GpuGuestMemoryScoped<u8,
                                                 Tegra::Memory::GuestMemoryFlags::UnsafeReadWrite>

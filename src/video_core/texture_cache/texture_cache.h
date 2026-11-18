@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <limits>
 #include <map>
+#include <new>
 #include <vector>
 #include <tuple>
 #include <optional>
@@ -200,6 +201,7 @@ void TextureCache<P>::DeleteSupersededImages() {
 template <class P>
 void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
     const StutterTrace::SiteScope site{StutterTrace::Site::TextureCollect};
+    gc_frame = frame_tick;
     bool high_priority_mode = false;
     bool aggressive_mode = false;
     bool evict_old_costly = false;
@@ -336,7 +338,24 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
             }
             KeepRanges newer;
             KeepNewerLanded(image, image.modification_tick, newer, queued);
-            if (!WriteBackImage(image, entry.copies, entry.map.mapped_span, newer)) {
+            // The write-back may not be dropped: without host memory for its copies the image
+            // stays in the cache with its GPU-written data, and a later pass writes it back.
+            // Both allocations (the swizzle copy, sized here for every level, and SwizzleKeeping's
+            // saved bytes) happen before any guest byte changes, so a throw leaves guest memory
+            // and the newer data it keeps as they were.
+            bool written;
+            try {
+                // Only when the range is not one span: a direct read needs no copy.
+                if (const auto memory = WriteBackMemory(image);
+                    memory && !memory->GetSpan(image.gpu_addr, image.guest_size_bytes)) {
+                    swizzle_data_buffer.resize_destructive(image.guest_size_bytes);
+                }
+                written = WriteBackImage(image, entry.copies, entry.map.mapped_span, newer);
+            } catch (const std::bad_alloc&) {
+                NoteHostOutOfMemory("write back", image);
+                continue;
+            }
+            if (!written) {
                 MarkStale(image);
             } else {
                 // Older write-backs still queued keep what this one wrote, and later ones see it as
@@ -3649,9 +3668,36 @@ void TextureCache<P>::DownloadImageIntoBuffer(typename TextureCache<P>::Image* i
 }
 
 template <class P>
+void TextureCache<P>::NoteHostOutOfMemory(std::string_view what, const ImageBase& image) {
+    swizzle_data_buffer.release();
+    unswizzle_data_buffer.release();
+    ++host_oom_count;
+    host_oom_frame = frame_tick;
+    const auto now = std::chrono::steady_clock::now();
+    if (host_oom_logged == 0 || now - host_oom_log_time >= std::chrono::seconds{10}) {
+        LOG_ERROR(HW_GPU,
+                  "No host memory to {} image {:#x} ({} MiB); kept for a later try ({} such "
+                  "failures since the last line)",
+                  what, image.gpu_addr, image.guest_size_bytes >> 20,
+                  host_oom_count - host_oom_logged);
+        host_oom_logged = host_oom_count;
+        host_oom_log_time = now;
+    }
+}
+
+template <class P>
+bool TextureCache<P>::HoldUploadsForHostMemory() const noexcept {
+    return host_oom_count != 0 && gc_frame <= host_oom_frame && frame_tick < host_oom_frame + 60;
+}
+
+template <class P>
 void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
     if (False(image.flags & ImageFlagBits::CpuModified)) {
         // Only upload modified images
+        return;
+    }
+    if (HoldUploadsForHostMemory() && image.guest_size_bytes >= 64_MiB) {
+        // Host RAM ran out recently: big uploads wait for the collector (stays CpuModified).
         return;
     }
     VideoCommon::Nx2Profile::Scope profile_scope{VideoCommon::Nx2Profile::Zone::TextureUpload};
@@ -3798,7 +3844,17 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
         if (tc_trace) {
             trace_staged = TraceClock::now();
         }
-        UploadImageContents(image, staging);
+        try {
+            UploadImageContents(image, staging);
+        } catch (const std::bad_alloc&) {
+            // A host RAM spike must not end the game (issue #8: a 915 MiB image on 16 GB RAM).
+            // The image keeps old contents and uploads again once the collector ran.
+            image.flags |= ImageFlagBits::CpuModified;
+            if (True(image.flags & ImageFlagBits::Tracked)) {
+                UntrackImage(image, image_id);
+            }
+            NoteHostOutOfMemory("upload", image);
+        }
         runtime.InsertUploadMemoryBarrier();
     }
     if (tc_trace) {
@@ -4158,6 +4214,10 @@ void TextureCache<P>::UploadImageContents(Image& image, StagingBuffer& staging) 
         return;
     }
 
+    // GuestMemory::Read is noexcept: allocate its copy here, where bad_alloc can reach the caller.
+    if (!gpu_memory->GetSpan(gpu_addr, image.guest_size_bytes)) {
+        swizzle_data_buffer.resize_destructive(image.guest_size_bytes);
+    }
     Tegra::Memory::GpuGuestMemory<u8, Tegra::Memory::GuestMemoryFlags::UnsafeRead> swizzle_data(
         *gpu_memory, gpu_addr, image.guest_size_bytes, &swizzle_data_buffer);
     const auto untile_begin = tc_trace ? TraceClock::now() : TraceClock::time_point{};

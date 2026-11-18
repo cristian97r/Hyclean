@@ -75,8 +75,10 @@ public:
     /// The previously held data will be destroyed if a reallocation occurs.
     void resize_destructive(size_type size) {
         if (size > buffer_capacity) {
+            // Free the old buffer first: no old+new peak, and a failed allocation leaves it empty.
+            release();
+            buffer = std::make_unique_for_overwrite<T[]>(size);
             buffer_capacity = size;
-            buffer = std::make_unique_for_overwrite<T[]>(buffer_capacity);
         }
         last_requested_size = size;
     }
