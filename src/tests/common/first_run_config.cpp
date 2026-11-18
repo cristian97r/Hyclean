@@ -297,6 +297,25 @@ TEST_CASE("Per-game overrides and use-global flags survive the new global profil
     }
 }
 
+TEST_CASE("Game settings keep their Renderer keys in global and per-game configs", "[config]") {
+    ConfigDirectory directory;
+    directory.Write("qt-config.ini",
+                    fmt::format("[Renderer]\nocarina_render_scale={}\n"
+                                "ocarina_render_scale\\default=false\n",
+                                u32(Settings::OcarinaRenderScale::Performance)));
+    directory.Write("custom/game.ini",
+                    fmt::format("[Renderer]\noot_anti_aliasing={}\noot_anti_aliasing\\default=false\n"
+                                "oot_anti_aliasing\\use_global=false\n",
+                                u32(Settings::OotAntiAliasing::NoSharpening)));
+    FileConfig global{std::string{"qt-config"}};
+    FileConfig game{std::string{"game"}, Config::ConfigType::PerGameConfig};
+    CHECK(Settings::values.ocarina_render_scale.UsingGlobal());
+    CHECK(Settings::values.ocarina_render_scale.GetValue() ==
+          Settings::OcarinaRenderScale::Performance);
+    CHECK_FALSE(Settings::values.oot_anti_aliasing.UsingGlobal());
+    CHECK(Settings::values.oot_anti_aliasing.GetValue() == Settings::OotAntiAliasing::NoSharpening);
+}
+
 TEST_CASE("Missing per-game and input profiles are not seeded", "[config]") {
     ConfigDirectory directory;
     FileConfig global{std::string{"qt-config"}};

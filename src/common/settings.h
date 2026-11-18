@@ -441,7 +441,7 @@ struct Values {
                                                            Specialization::Default,
                                                            true,
                                                            true};
-    SwitchableSetting<bool> ocarina_fsr{linkage, false, "ocarina_fsr", Category::Renderer};
+    SwitchableSetting<bool> ocarina_fsr{linkage, false, "ocarina_fsr", Category::GameOcarina};
     // AMD FSR 4 in place of FSR 3.1 where FSR replaces a game's upscaler (Windows, AMD's driver).
     SwitchableSetting<bool> amd_fsr4{linkage, false, "amd_fsr4", Category::Renderer};
     SwitchableSetting<AspectRatio, true> aspect_ratio{linkage,
@@ -462,11 +462,11 @@ struct Values {
     // The Legend of Zelda: Ocarina of Time's own anti-aliasing network and its sharpening output
     // pass, or the tonemapped image as the game renders it (video_core/oot_network.h).
     SwitchableSetting<OotAntiAliasing> oot_anti_aliasing{linkage, OotAntiAliasing::Game,
-                                                         "oot_anti_aliasing", Category::Renderer};
+                                                         "oot_anti_aliasing", Category::GameOcarina};
     // The render size the game itself uses under the Max Resolution add-on (fractions of
     // 2560x1440), independent of NVIDIA DLSS.
     SwitchableSetting<OcarinaRenderScale> ocarina_render_scale{
-        linkage, OcarinaRenderScale::Native, "ocarina_render_scale", Category::Renderer};
+        linkage, OcarinaRenderScale::Native, "ocarina_render_scale", Category::GameOcarina};
 
     SwitchableSetting<std::string> post_shader_chain{linkage,
                                                      std::string(),

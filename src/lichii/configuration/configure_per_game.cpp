@@ -69,6 +69,7 @@
 #include "lichii/configuration/configure_applets.h"
 #include "lichii/configuration/configure_audio.h"
 #include "lichii/configuration/configure_cpu.h"
+#include "lichii/configuration/configure_game.h"
 #include "lichii/configuration/configure_graphics.h"
 #include "lichii/configuration/configure_graphics_advanced.h"
 #include "lichii/configuration/configure_graphics_extensions.h"
@@ -390,6 +391,9 @@ ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const std::st
     system_tab = std::make_unique<ConfigureSystem>(system_, tab_group, *builder, this);
     network_tab = std::make_unique<ConfigureNetwork>(system_, this, true);
     applets_tab = std::make_unique<ConfigureApplets>(system_, tab_group, *builder, this);
+    if (const auto category = ConfigureGame::CategoryFor(title_id)) {
+        game_tab = std::make_unique<ConfigureGame>(system_, *category, tab_group, *builder, this);
+    }
 
     ui->setupUi(this);
 
@@ -419,6 +423,12 @@ ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const std::st
         }
         ui->tabWidget->addTab(ConfigurationShared::ScrollTab(tab),
                               ConfigurationShared::PageIcon(QString::fromLatin1(icon)), name);
+    }
+    if (game_tab) {
+        ConfigurationShared::UseToggles(game_tab.get());
+        ui->tabWidget->insertTab(1, ConfigurationShared::ScrollTab(game_tab.get()),
+                                 ConfigurationShared::PageIcon(QStringLiteral("puzzle")),
+                                 tr("Game"));
     }
 
     setFocusPolicy(Qt::ClickFocus);
