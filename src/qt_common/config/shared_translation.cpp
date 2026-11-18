@@ -424,6 +424,11 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "stalls on new content). Skip drops the draw, which can leave an effect missing for "
               "a few frames. Bounded waits up to the time below per frame, then skips. The "
               "EDEN_NX2_ASYNC_DISCARD=1 environment variable still forces Skip."));
+    INSERT(Settings, skip_unbuilt_mesh_draws, tr("Skip mesh draws that are still building"),
+           tr("Only applies when asynchronous shader building is on. Fewer freezes the first "
+              "time you visit an area (about a third less in Ocarina of Time), but some objects "
+              "can be missing for a moment until their shaders are built. Later visits are not "
+              "affected."));
     INSERT(Settings, native_pipeline_wait_ms, tr("Pipeline wait per frame (ms):"),
            tr("Used by the Bounded mode: the most time per frame that Switch 2 draws may wait in "
               "total for pipelines that are still building. Once spent, the remaining unbuilt "

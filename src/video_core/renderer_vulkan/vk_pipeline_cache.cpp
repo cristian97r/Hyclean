@@ -2722,6 +2722,15 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) noexc
         }
         }
     }
+    // Unbuilt task/mesh pipelines skip their draws in every native mode, Wait included.
+    if (native && regs.IsMeshEnabled() && Settings::values.skip_unbuilt_mesh_draws.GetValue()) {
+        discard = true;
+        static std::atomic<u64> mesh_skipped{};
+        if ((mesh_skipped.fetch_add(1, std::memory_order_relaxed) & 255) == 0) {
+            LOG_INFO(Render_Vulkan, "Async shaders: {} mesh pipeline lookups skipped",
+                     mesh_skipped.load(std::memory_order_relaxed));
+        }
+    }
     if (discard) {
         static std::atomic<u64> skipped{};
         if ((skipped.fetch_add(1, std::memory_order_relaxed) & 255) == 0) {
