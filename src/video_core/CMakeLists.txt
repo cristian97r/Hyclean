@@ -710,7 +710,7 @@ if (ENABLE_NVIDIA_DLSS)
     endif()
     target_sources(video_core PRIVATE
         renderer_vulkan/vk_streamline_dlss.cpp
-        renderer_vulkan/vk_streamline_dlss.h
+        renderer_vulkan/vk_dlss_upscaler.h
         vulkan_common/streamline.cpp
         vulkan_common/streamline.h
         vulkan_common/streamline_api.h

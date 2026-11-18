@@ -2197,7 +2197,7 @@ bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageVie
         }
         try {
             dlss_upscaler =
-                std::make_unique<StreamlineDlssUpscaler>(device, scheduler, memory_allocator);
+                std::make_unique<DlssUpscaler>(device, scheduler, memory_allocator);
         } catch (const vk::Exception& exception) {
             LOG_WARNING(Render_Vulkan, "NVIDIA DLSS unavailable ({}); using FSR 3.1",
                         exception.what());
@@ -2206,7 +2206,7 @@ bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageVie
         }
     }
     const auto image = [&](ImageView& view, VkImageView handle, VkImageAspectFlags aspect) {
-        return StreamlineDlssUpscaler::Image{
+        return DlssUpscaler::Image{
             .view = handle,
             .image = view.ImageHandle(),
             .format = MaxwellToVK::SurfaceFormat(device, FormatType::Optimal, false, view.format)

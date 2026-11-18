@@ -18,7 +18,7 @@
 #include "video_core/dlss_mode.h"
 #include "video_core/renderer_base.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #include "video_core/vulkan_common/streamline.h"
 #include "video_core/vulkan_common/streamline_api.h"
 #include "video_core/vulkan_common/streamline_frame_gen.h"
@@ -97,7 +97,7 @@ sl::float4x4 Identity() {
     return matrix;
 }
 
-VkImageMemoryBarrier Barrier(const StreamlineDlssUpscaler::Image& image, VkAccessFlags src_access,
+VkImageMemoryBarrier Barrier(const DlssUpscaler::Image& image, VkAccessFlags src_access,
                              VkAccessFlags dst_access, VkImageLayout old_layout,
                              VkImageLayout new_layout) {
     VkImageSubresourceRange range = image.range;
@@ -224,7 +224,7 @@ sl::float3 ToStreamline(const Vector3& vector) {
 /// Fills the camera constants DLSS-G checks from the scene's view-projection: the camera's
 /// position and axes come out of it, and the projection is what is left once the view is taken
 /// out. Streamline's clip depth goes from 0 to 1 where ours goes from -1 to 1.
-bool SetCamera(sl::Constants& constants, const StreamlineDlssUpscaler::Inputs::Camera& camera) {
+bool SetCamera(sl::Constants& constants, const DlssUpscaler::Inputs::Camera& camera) {
     constexpr Matrix4 TO_ZERO_ONE{{
         {1.0, 0.0, 0.0, 0.0},
         {0.0, 1.0, 0.0, 0.0},
@@ -359,7 +359,7 @@ sl::Resource Resource(VkImage image, VkImageView view, VkFormat format, VkImageL
 
 } // Anonymous namespace
 
-StreamlineDlssUpscaler::StreamlineDlssUpscaler(const Device& device_, Scheduler& scheduler_,
+DlssUpscaler::DlssUpscaler(const Device& device_, Scheduler& scheduler_,
                                                MemoryAllocator& memory_allocator_)
     : device{device_}, scheduler{scheduler_}, memory_allocator{memory_allocator_} {
     if (!Streamline::IsDlssAvailable()) {
@@ -404,7 +404,7 @@ StreamlineDlssUpscaler::StreamlineDlssUpscaler(const Device& device_, Scheduler&
     linear_sampler = device.GetLogical().CreateSampler(sampler_info);
 }
 
-StreamlineDlssUpscaler::~StreamlineDlssUpscaler() {
+DlssUpscaler::~DlssUpscaler() {
     // Not scheduler.Finish(): this runs when the renderer goes away, after the game's channels are
     // released, and a submit would touch their state. Nothing more gets recorded by then.
     void(device.GetLogical().WaitIdle());
@@ -413,7 +413,7 @@ StreamlineDlssUpscaler::~StreamlineDlssUpscaler() {
     }
 }
 
-void StreamlineDlssUpscaler::CreateOutput(VkExtent2D upscale_size) {
+void DlssUpscaler::CreateOutput(VkExtent2D upscale_size) {
     if (output_image) {
         scheduler.Finish(); // the old output may still be in use
     }
@@ -475,7 +475,7 @@ void StreamlineDlssUpscaler::CreateOutput(VkExtent2D upscale_size) {
     });
 }
 
-bool StreamlineDlssUpscaler::Upscale(const Inputs& in) {
+bool DlssUpscaler::Upscale(const Inputs& in) {
     if (failed) {
         return false;
     }
@@ -776,7 +776,7 @@ bool StreamlineDlssUpscaler::Upscale(const Inputs& in) {
     return true;
 }
 
-VideoCore::DlssStatus StreamlineDlssUpscaler::Status() {
+VideoCore::DlssStatus DlssUpscaler::Status() {
     const u64 count = evaluations.load(std::memory_order_acquire);
     const u32 last = last_evaluation.load(std::memory_order_relaxed);
     return {

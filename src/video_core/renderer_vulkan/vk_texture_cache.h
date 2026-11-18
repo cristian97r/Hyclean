@@ -18,7 +18,7 @@
 #include "video_core/renderer_vulkan/vk_dlss_network_probe.h"
 #include "video_core/renderer_vulkan/vk_fsr3_upscaler.h"
 #ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #endif
 #include "video_core/renderer_vulkan/vk_render_pass_cache.h"
 #include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
@@ -351,7 +351,7 @@ public:
                          ImageView& motion_vectors, ImageView& depth,
                          std::array<u32, 2> render_size, std::array<f32, 2> jitter,
                          std::array<f32, 2> motion_scale, bool reset);
-    std::unique_ptr<StreamlineDlssUpscaler> dlss_upscaler;
+    std::unique_ptr<DlssUpscaler> dlss_upscaler;
     bool dlss_unsupported{};
 #endif
 

@@ -23,7 +23,7 @@
 #include "video_core/host_shaders/ocarina_dlss_effects_comp_spv.h"
 #include "video_core/renderer_vulkan/vk_master_semaphore.h"
 #ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #include "video_core/vulkan_common/streamline.h"
 #endif
 
@@ -720,7 +720,7 @@ struct OcarinaUpscaler::Impl {
           output_pass{device, scheduler, pool_, OCARINA_DLSS_OUTPUT_COMP_SPV} {
 #ifdef EGLANTINE_STREAMLINE
         if (backend == VideoCommon::OcarinaUpscaleBackend::Dlss) {
-            dlss = std::make_unique<StreamlineDlssUpscaler>(device, scheduler, allocator);
+            dlss = std::make_unique<DlssUpscaler>(device, scheduler, allocator);
             return;
         }
 #endif
@@ -747,7 +747,7 @@ struct OcarinaUpscaler::Impl {
     MemoryAllocator& allocator;
     DescriptorPool& pool;
 #ifdef EGLANTINE_STREAMLINE
-    std::unique_ptr<StreamlineDlssUpscaler> dlss;
+    std::unique_ptr<DlssUpscaler> dlss;
 #endif
     std::unique_ptr<Fsr3Upscaler> fsr;
     std::unique_ptr<Fsr4Upscaler> fsr4;
@@ -1017,7 +1017,7 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
             .depth_inverted = false,
             .hdr = false,
             .depth_size = depth_extent,
-            .camera = StreamlineDlssUpscaler::Inputs::Camera{current, *transform},
+            .camera = DlssUpscaler::Inputs::Camera{current, *transform},
         })) {
         state.scheduler.InvalidateState();
         return false;

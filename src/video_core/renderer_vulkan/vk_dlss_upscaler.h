@@ -24,7 +24,7 @@ class Device;
 class MemoryAllocator;
 class Scheduler;
 
-class StreamlineDlssUpscaler {
+class DlssUpscaler {
 public:
     struct Image {
         VkImageView view;
@@ -62,9 +62,9 @@ public:
     };
 
     /// Throws vk::Exception when Streamline has no DLSS for this device.
-    explicit StreamlineDlssUpscaler(const Device& device, Scheduler& scheduler,
+    explicit DlssUpscaler(const Device& device, Scheduler& scheduler,
                                     MemoryAllocator& memory_allocator);
-    ~StreamlineDlssUpscaler();
+    ~DlssUpscaler();
 
     /// Records one evaluation into the output image (RGBA16F at the upscale size, GENERAL
     /// layout). Returns false when DLSS can't run, so the caller can fall back to FSR 3.1.

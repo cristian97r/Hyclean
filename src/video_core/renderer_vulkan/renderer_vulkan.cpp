@@ -46,7 +46,7 @@
 #include "video_core/vulkan_common/vulkan_surface.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 #ifdef EGLANTINE_STREAMLINE
-#include "video_core/renderer_vulkan/vk_streamline_dlss.h"
+#include "video_core/renderer_vulkan/vk_dlss_upscaler.h"
 #include "video_core/vulkan_common/streamline.h"
 #include "video_core/vulkan_common/streamline_frame_gen.h"
 #endif
@@ -581,7 +581,7 @@ void RendererVulkan::RenderAppletCaptureLayer(
 
 #ifdef EGLANTINE_STREAMLINE
 VideoCore::DlssStatus RendererVulkan::GetDlssStatus() const {
-    return StreamlineDlssUpscaler::Status();
+    return DlssUpscaler::Status();
 }
 #endif
 
