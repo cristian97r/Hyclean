@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <set>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -58,6 +65,47 @@ std::vector<size_t> SelectionsPerFunction(const std::vector<u32>& code) {
             ++result.back();
         }
         i += count;
+    }
+    return result;
+}
+
+// EDEN_GLOBAL_MEMORY_ROUTES_TEST_OUTPUT=<dir>: write the modules for spirv-val.
+void Dump(const std::vector<u32>& code, std::string_view name) {
+    const char* const directory{std::getenv("EDEN_GLOBAL_MEMORY_ROUTES_TEST_OUTPUT")};
+    if (!directory) {
+        return;
+    }
+    std::filesystem::create_directories(directory);
+    std::ofstream file{std::filesystem::path{directory} / (std::string{name} + ".spv"),
+                       std::ios::binary};
+    file.write(reinterpret_cast<const char*>(code.data()),
+               static_cast<std::streamsize>(code.size() * sizeof(u32)));
+    REQUIRE(file.good());
+}
+
+// The functions marked DontInline, and the functions that call each of them
+std::vector<std::pair<u32, std::set<u32>>> NotInlinedCallers(const std::vector<u32>& code) {
+    static constexpr u32 op_function{54};
+    static constexpr u32 op_function_call{57};
+    static constexpr u32 dont_inline{2};
+    std::vector<std::pair<u32, std::set<u32>>> result;
+    for (size_t i = 5; i < code.size(); i += code[i] >> 16) {
+        if ((code[i] & 0xffff) == op_function && (code[i + 3] & dont_inline) != 0) {
+            result.emplace_back(code[i + 2], std::set<u32>{});
+        }
+    }
+    u32 function{};
+    for (size_t i = 5; i < code.size(); i += code[i] >> 16) {
+        const u32 opcode{code[i] & 0xffff};
+        if (opcode == op_function) {
+            function = code[i + 2];
+        } else if (opcode == op_function_call) {
+            for (auto& [callee, callers] : result) {
+                if (code[i + 3] == callee) {
+                    callers.insert(function);
+                }
+            }
+        }
     }
     return result;
 }
@@ -186,6 +234,26 @@ TEST_CASE("On NVIDIA compute programs select the buffer; graphics keep their rou
     CHECK(functions(0x1234, Stage::VertexB) == routed);
     CHECK(functions(0xf98012dc9a4465ffULL, Stage::VertexB) == 8);
     CHECK(routed == 9);
+}
+
+TEST_CASE("Selecting the buffer searches the bound buffers in one function that is not inlined",
+          "[shader][global_memory_routes]") {
+    Fixture fixture;
+    Profile profile{};
+    // SPIR-V 1.6 as on NVIDIA: the routed loads select a vector with a scalar condition (1.4)
+    profile.supported_spirv = 0x00010600;
+    profile.support_int64 = true;
+    profile.support_descriptor_aliasing = true;
+    profile.unified_descriptor_binding = true;
+    profile.min_ssbo_alignment = 16;
+    CHECK(NotInlinedCallers(Backend::SPIRV::EmitSPIRV(profile, fixture.program)).empty());
+    profile.select_global_memory_buffer = true;
+    const auto code{Backend::SPIRV::EmitSPIRV(profile, fixture.program)};
+    Dump(code, "select");
+    const auto searches{NotInlinedCallers(code)};
+    REQUIRE(searches.size() == 1);
+    // The 32, 64 and 128-bit load and store each call it
+    CHECK(searches.front().second.size() == 6);
 }
 
 TEST_CASE("A route through a pointer array keeps the bound slots past those searched",

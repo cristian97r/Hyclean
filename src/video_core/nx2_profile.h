@@ -172,7 +172,7 @@ inline u64 Ticks() {
 struct ThreadData {
     std::array<u64, static_cast<size_t>(Zone::Count)> exclusive_ns{};
     std::array<u64, static_cast<size_t>(Zone::Count)> count{};
-    std::array<u64, 11> counters{}; ///< See Counter
+    std::array<u64, 14> counters{}; ///< See Counter
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_ns{};
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_count{};
     /// GPU waits by the zone they happened in (Other: outside every zone)
@@ -256,6 +256,9 @@ enum class Counter : u32 {
     CBBinds,        ///< 3D constant buffer binds (Maxwell3D::ProcessCBBind)
     SameCBBinds,    ///< Of CBBinds: same enable, address and size as the slot held
     DeltaStorageBinds, ///< Storage descriptors re-read on delta draws (ConfigureDelta)
+    ListCopies,     ///< Command list pages copied back after the work that wrote them
+    ListCopiesReused, ///< Of ListCopies: into the page's copy from earlier in the open tick
+    StagingCreates, ///< Vulkan staging buffers created
 };
 
 /// Method calls on this thread by method (3D registers on the back, macros on the front), and
@@ -380,6 +383,11 @@ inline void Report(const char* thread_name = "GPU thread", bool report_all_conte
                         static_cast<double>(data.counters[8]) * 1e9 / window,
                         static_cast<double>(data.counters[9]) * 1e9 / window,
                         static_cast<double>(data.counters[10]) * 1e9 / window);
+    line += fmt::format(" | list copies {:.0f} ({:.0f} into the open tick's copy) | staging "
+                        "buffers created {:.0f}",
+                        static_cast<double>(data.counters[11]) * 1e9 / window,
+                        static_cast<double>(data.counters[12]) * 1e9 / window,
+                        static_cast<double>(data.counters[13]) * 1e9 / window);
     std::string drains;
     for (size_t i = 0; i < data.drain_count.size(); ++i) {
         if (data.drain_count[i] != 0) {

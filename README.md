@@ -225,7 +225,9 @@ Properties window writes these for you.
 
 Open an [issue](https://github.com/tasarren/Lichii/issues) with the build number, the game, your
 CPU, GPU and driver, your settings, and the log (File > Open Lichii Folders > Log Folder) or a Help > Report a Bug
-file. Check it for personal information first. Do not upload games, keys or firmware.
+file. Check it for personal information first. Do not upload games, keys or firmware. Bug
+bundles, GPU traces, shader dumps, pipeline caches and crash dumps can contain game data: do not
+attach them to public reports; ask a maintainer first.
 
 ## Building
 
@@ -234,5 +236,6 @@ See the [build guide](docs/Build.md).
 ## Credits and license
 
 This fork builds on Lichii and the projects it comes from: Eglantine, Eden, yuzu and Sudachi, and
-their contributors. Original copyright notices and third-party licenses are kept. See
-[LICENSE.txt](LICENSE.txt) and the source files for the license terms. Not affiliated with Nintendo.
+their contributors, including Eglantine's original developer Camille LaVey. Original copyright
+notices and third-party licenses are kept. See [LICENSE.txt](LICENSE.txt) and the source files for
+the license terms. Not affiliated with Nintendo.
