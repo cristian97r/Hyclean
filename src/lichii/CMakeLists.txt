@@ -88,6 +88,8 @@ add_executable(lichii
     configuration/configure_graphics_advanced.cpp
     configuration/configure_graphics_advanced.h
     configuration/configure_graphics_advanced.ui
+    configuration/configure_game.cpp
+    configuration/configure_game.h
     configuration/configure_graphics_extensions.cpp
     configuration/configure_graphics_extensions.h
     configuration/configure_graphics_extensions.ui

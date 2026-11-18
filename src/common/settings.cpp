@@ -338,6 +338,7 @@ const char* TranslateCategory(Category category) {
     case Category::RendererHacks:
     case Category::RendererDebug:
     case Category::RendererExtensions:
+    case Category::GameOcarina:
         return "Renderer";
     case Category::System:
     case Category::SystemAudio:

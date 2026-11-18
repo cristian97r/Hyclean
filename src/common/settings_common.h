@@ -26,6 +26,9 @@ enum class Category : u32 {
     RendererHacks,
     RendererExtensions,
     RendererDebug,
+    // One category per game with its own settings, shown only in that game's properties
+    // (ConfigureGame). Saved with the renderer settings.
+    GameOcarina,
     System,
     SystemAudio,
     DataStorage,
