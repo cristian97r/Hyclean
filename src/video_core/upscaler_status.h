@@ -8,24 +8,42 @@
 
 #include "common/common_types.h"
 #include "common/settings_enums.h"
+#include "video_core/game_dlss_status.h"
 
 namespace VideoCore {
 
 enum class Upscaler : u8 { None, Dlss, Fsr3, Fsr4 };
 
-/// The one upscaler the settings choose (settings page combo, status bar chip).
-enum class UpscalerChoice : u8 { Native, Dlss, Fsr, GameDlss };
+/// The one upscaler the settings choose (settings page combo, status bar chip). Native is the
+/// console's picture: a game's own DLSS network runs there too.
+enum class UpscalerChoice : u8 { Native, Dlss, Fsr };
 
-/// The settings page and the chip turn one on at a time; a configuration with several on resolves
-/// as the renderer runs them: NVIDIA DLSS, then AMD FSR, then the game's own DLSS.
-constexpr UpscalerChoice ChosenUpscaler(bool nvidia_dlss, bool ocarina_fsr, bool game_dlss_network) {
+/// The settings page and the chip turn one on at a time; a configuration with both on resolves
+/// as the renderer runs them: NVIDIA DLSS first.
+constexpr UpscalerChoice ChosenUpscaler(bool nvidia_dlss, bool ocarina_fsr) {
     if (nvidia_dlss) {
         return UpscalerChoice::Dlss;
     }
-    if (ocarina_fsr) {
-        return UpscalerChoice::Fsr;
+    return ocarina_fsr ? UpscalerChoice::Fsr : UpscalerChoice::Native;
+}
+
+/// What draws a game's DLSS evaluation (a Switch 2 game's own network).
+enum class GameUpscale : u8 { Network, Dlss, Fsr3, StandIn };
+
+/// Only what the user chose: Native runs the game's network, and Lichii's plain stand-in where
+/// the network can't run or fails its checks. FSR 3.1 runs only when chosen, or for chosen
+/// NVIDIA DLSS that can't run.
+constexpr GameUpscale PickGameUpscale(UpscalerChoice choice, bool network_runs,
+                                      bool dlss_runs) {
+    switch (choice) {
+    case UpscalerChoice::Native:
+        return network_runs ? GameUpscale::Network : GameUpscale::StandIn;
+    case UpscalerChoice::Dlss:
+        return dlss_runs ? GameUpscale::Dlss : GameUpscale::Fsr3;
+    case UpscalerChoice::Fsr:
+        break;
     }
-    return game_dlss_network ? UpscalerChoice::GameDlss : UpscalerChoice::Native;
+    return GameUpscale::Fsr3;
 }
 
 /// An evaluation's input and output size, packed in one word so an atomic holds it.
@@ -57,6 +75,8 @@ struct UpscalerStatus {
     Settings::NvidiaDlssPreset preset{};
     /// Why DLSS is not running though it is ticked; empty when it runs or is off
     std::string dlss_fallback;
+    /// A game's own DLSS network this session (state None: the game has none)
+    GameDlssStatus game_dlss;
 };
 
 /// The upscaler that evaluated since the last status: DLSS before FSR 4 before FSR 3.1, as the

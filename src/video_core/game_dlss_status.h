@@ -36,6 +36,10 @@ struct GameDlssStatus {
 /// The reason in English, for the log.
 [[nodiscard]] const char* GameDlssReasonText(GameDlssReason reason);
 
+/// The status the GPU thread last set, for the status bar (any thread).
+void PublishGameDlssStatus(const GameDlssStatus& status);
+[[nodiscard]] GameDlssStatus LastGameDlssStatus();
+
 /// One health check of a game's DLSS network output against its input, by blocks of a coarse grid
 /// (host_shaders/dlss_network_probe.comp).
 struct GameDlssProbe {

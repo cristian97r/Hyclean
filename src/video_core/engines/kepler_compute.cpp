@@ -917,8 +917,8 @@ bool KeplerCompute::ProcessGameDlss(u64 program_id, u64 native_key) {
 // evaluation has run several times in a row and its output has passed several health checks in
 // a row. Until then, when any pass can't run, and for the rest of the session once the network
 // fails its checks, the replacement upscale draws over the output pass's result. The setting
-// "Use the game's own DLSS" defaults off; an explicit native override enables it, while fsr/dlss
-// overrides keep the replacement. The network's image sizes are fixed by the game, so it is used
+// It runs with the Native upscaler choice; an explicit native override enables it too, while
+// fsr/dlss overrides keep the replacement. The network's image sizes are fixed by the game, so it is used
 // only without resolution scaling; its matrix multiplies need shaders 32 threads wide.
 VideoCore::GameDlssReason KeplerCompute::GameDlssBlocker() const {
     using VideoCore::GameDlssReason;
@@ -927,17 +927,12 @@ VideoCore::GameDlssReason KeplerCompute::GameDlssBlocker() const {
         VideoCommon::FireEmblemUpscale::ProgramId,
         VideoCommon::FireEmblemUpscale::OutputProgramKey, option);
     const bool forced_native = option && !forced_replacement;
-    // Only while it is the chosen upscaler: never together with NVIDIA DLSS or AMD FSR.
-    const bool chosen = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
-                                                  Settings::values.ocarina_fsr.GetValue(),
-                                                  Settings::values.game_dlss_network.GetValue()) ==
-                        VideoCore::UpscalerChoice::GameDlss;
-    if (forced_replacement || (!forced_native && !chosen)) {
+    // Native is the console's picture, the network included; NVIDIA DLSS or AMD FSR replace it.
+    const bool native = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue()) ==
+                        VideoCore::UpscalerChoice::Native;
+    if (forced_replacement || (!forced_native && !native)) {
         return GameDlssReason::TurnedOff;
-    }
-    // NVIDIA DLSS, when turned on and running, comes first.
-    if (rasterizer->UsesNvidiaDlss()) {
-        return GameDlssReason::NvidiaDlss;
     }
     const auto& scale = Settings::values.resolution_info;
     if (scale.up_scale != 1 || scale.down_shift != 0) {
@@ -1113,6 +1108,7 @@ void KeplerCompute::UpdateGameDlssStatus(bool complete, VideoCore::GameDlssReaso
                  VideoCore::GameDlssReasonText(shown.reason));
     }
     dlss_chain.status = shown;
+    VideoCore::PublishGameDlssStatus(shown);
 }
 
 // Ends this frame's DLSS evaluation at its output pass: either the network's own result stays,

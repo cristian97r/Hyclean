@@ -587,6 +587,7 @@ VideoCore::UpscalerStatus RendererVulkan::GetUpscalerStatus() const {
     VideoCore::UpscalerStatus status;
     Fsr3Upscaler::Status(status);
     Fsr4Upscaler::Status(status);
+    status.game_dlss = VideoCore::LastGameDlssStatus();
 #ifdef EGLANTINE_DLSS
     DlssUpscaler::Status(status);
     if (Settings::values.nvidia_dlss.GetValue()) {

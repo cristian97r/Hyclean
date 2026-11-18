@@ -1332,8 +1332,7 @@ void MainWindow::InitializeWidgets() {
     connect(upscaler_status_button, &QPushButton::clicked, this, [this] {
         using enum VideoCore::UpscalerChoice;
         switch (VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
-                                          Settings::values.ocarina_fsr.GetValue(),
-                                          Settings::values.game_dlss_network.GetValue())) {
+                                          Settings::values.ocarina_fsr.GetValue())) {
         case Dlss:
             ChooseUpscaler(Fsr);
             break;
@@ -1341,7 +1340,6 @@ void MainWindow::InitializeWidgets() {
             ChooseUpscaler(Native);
             break;
         case Native:
-        case GameDlss:
             ChooseUpscaler(DlssInstalled() ? Dlss : Fsr);
             break;
         }
@@ -1357,7 +1355,6 @@ void MainWindow::InitializeWidgets() {
                     upscaler->addAction(tr("NVIDIA DLSS"), [this] { ChooseUpscaler(Dlss); });
                 }
                 upscaler->addAction(tr("AMD FSR"), [this] { ChooseUpscaler(Fsr); });
-                upscaler->addAction(tr("Game's DLSS"), [this] { ChooseUpscaler(GameDlss); });
 
                 QMenu* const quality = context_menu.addMenu(tr("DLSS quality"));
                 for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
@@ -6031,7 +6028,6 @@ void MainWindow::ChooseUpscaler(VideoCore::UpscalerChoice choice) {
     using enum VideoCore::UpscalerChoice;
     Settings::values.nvidia_dlss.SetValue(choice == Dlss);
     Settings::values.ocarina_fsr.SetValue(choice == Fsr);
-    Settings::values.game_dlss_network.SetValue(choice == GameDlss);
     Settings::RefreshNvidiaDlssRuntimeSettings();
     UpdateUpscalerButton(VideoCore::Upscaler::None);
 }
@@ -6044,19 +6040,39 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
             .toUpper();
     };
     const auto choice = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
-                                                  Settings::values.ocarina_fsr.GetValue(),
-                                                  Settings::values.game_dlss_network.GetValue());
+                                                  Settings::values.ocarina_fsr.GetValue());
     const bool dlss_chosen = choice == VideoCore::UpscalerChoice::Dlss;
-    if (choice == VideoCore::UpscalerChoice::Native ||
-        (choice == VideoCore::UpscalerChoice::GameDlss && running == VideoCore::Upscaler::None)) {
-        // Native (or the game's own DLSS): the chip stays, unchecked, so a click turns ours on.
+    if (choice == VideoCore::UpscalerChoice::Native) {
+        // Native: the chip stays, unchecked, so a click turns an upscaler on.
         dlss_status_text.clear();
-        upscaler_status_button->setText(choice == VideoCore::UpscalerChoice::Native
-                                            ? tr("NATIVE")
-                                            : tr("GAME DLSS"));
+        using VideoCore::GameDlssState;
+        const auto& game = status.game_dlss;
+        upscaler_status_button->setText(game.state == GameDlssState::Network ? tr("GAME DLSS")
+                                                                           : tr("NATIVE"));
+        QString tooltip = tr("No Lichii upscaler is chosen.");
+        if (game.state == GameDlssState::Network) {
+            tooltip += tr("<br>The game's own DLSS runs, translated for this GPU.");
+        } else if (game.state == GameDlssState::Checking) {
+            tooltip += tr("<br>The game's own DLSS is being checked; a plain Lichii upscale "
+                          "draws meanwhile.");
+        } else if (game.state == GameDlssState::Replacement) {
+            tooltip += tr("<br>The game's own DLSS can't run here (%1); a plain Lichii upscale "
+                          "draws.")
+                           .arg(QString::fromUtf8(VideoCore::GameDlssReasonText(game.reason)));
+        }
+        // Native over a scene a boot render-scale patch shrank: the game upscales it itself.
+        if (const auto scale = Settings::AppliedOcarinaRenderScale();
+            scale && emulation_running &&
+            QtCommon::system->GetApplicationProcessProgramID() == VideoCore::OCARINA_PROGRAM_ID) {
+            tooltip += tr("<br>Render scale %1 is set at game start; choose an upscaler or "
+                          "restart to change it.")
+                           .arg(ConfigurationShared::TranslateMapText(
+                               translator, ConfigurationShared::nvidia_dlss_quality_texts_map.at(
+                                               *scale)));
+        }
         upscaler_status_button->setToolTip(
-            tr("No Lichii upscaler is chosen.<br>Click: DLSS, FSR, native. Right-click: "
-               "upscaler, DLSS quality and preset."));
+            tooltip + tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and "
+                         "preset."));
         upscaler_status_button->setChecked(false);
         upscaler_status_button->setVisible(emulation_running);
         return;

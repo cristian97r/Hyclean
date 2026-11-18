@@ -230,7 +230,6 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     QWidget* nvidia_dlss_row = nullptr;
     QVBoxLayout* nvidia_dlss_group_layout = nullptr;
     ConfigurationShared::Widget* ocarina_fsr_widget = nullptr;
-    ConfigurationShared::Widget* game_dlss_widget = nullptr;
 #endif
     ConfigurationShared::Widget* amd_fsr4_widget = nullptr;
     ConfigurationShared::Widget* sharpness_widget = nullptr;
@@ -393,9 +392,6 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
         } else if (setting->Id() == Settings::values.ocarina_fsr.Id()) {
             ocarina_fsr_widget = widget;
             hold_graphics.emplace(setting->Id(), widget);
-        } else if (setting->Id() == Settings::values.game_dlss_network.Id()) {
-            game_dlss_widget = widget;
-            hold_graphics.emplace(setting->Id(), widget);
 #endif
         } else if (setting->Id() == Settings::values.fsr_sharpening_slider.Id()) {
             sharpness_widget = widget;
@@ -447,23 +443,20 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     }
 
 #ifdef EGLANTINE_DLSS
-    // One upscaler choice, as the status bar chip makes it: the combo drives the three settings'
+    // One upscaler choice, as the status bar chip makes it: the combo drives the two settings'
     // checkboxes (hidden), which keep saving them. click() rather than setChecked() so a
     // per-game setting is marked as changed.
     // ponytail: the hidden rows take their restore-global buttons with them; add one to the
     // combo if per-game restore of the upscaler is missed.
-    if (nvidia_dlss_row != nullptr && ocarina_fsr_widget != nullptr &&
-        game_dlss_widget != nullptr) {
+    if (nvidia_dlss_row != nullptr && ocarina_fsr_widget != nullptr) {
         using VideoCore::UpscalerChoice;
-        const std::array<QCheckBox*, 3> checkboxes{nvidia_dlss_checkbox,
-                                                   ocarina_fsr_widget->checkbox,
-                                                   game_dlss_widget->checkbox};
+        const std::array<QCheckBox*, 2> checkboxes{nvidia_dlss_checkbox,
+                                                   ocarina_fsr_widget->checkbox};
         const auto chosen = [=] {
             return VideoCore::ChosenUpscaler(checkboxes[0]->isChecked(),
-                                             checkboxes[1]->isChecked(),
-                                             checkboxes[2]->isChecked());
+                                             checkboxes[1]->isChecked());
         };
-        // Several on (an older configuration): keep the one the renderer runs.
+        // Both on (an older configuration): keep the one the renderer runs.
         const auto set_choice = [=](UpscalerChoice choice) {
             for (size_t i = 0; i < checkboxes.size(); ++i) {
                 if (checkboxes[i]->isChecked() != (static_cast<size_t>(choice) == i + 1)) {
@@ -484,7 +477,10 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
         // In UpscalerChoice order.
         upscaler_combobox->addItem(tr("Native"));
         upscaler_combobox->setItemData(
-            0, tr("The game's own upscale, as on the console."), Qt::ToolTipRole);
+            0, tr("The game's own upscale, as on the console. Games that ship their own DLSS "
+                  "run it, translated for this GPU; where it can't run, a plain Lichii upscale "
+                  "draws."),
+            Qt::ToolTipRole);
         upscaler_combobox->addItem(tr("NVIDIA DLSS"));
         upscaler_combobox->setItemData(
             1, tr("NVIDIA's AI upscaler. Needs an NVIDIA RTX GPU and NVIDIA's files (Download "
@@ -494,16 +490,10 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
         upscaler_combobox->setItemData(
             2, tr("AMD's upscaler. Runs on any GPU; FSR 4 on AMD GPUs that support it."),
             Qt::ToolTipRole);
-        upscaler_combobox->addItem(tr("Game's DLSS"));
-        upscaler_combobox->setItemData(
-            3, tr("The game's own DLSS network, translated for this GPU (Switch 2 games that "
-                  "ship one). AMD FSR draws while it is checked and when it can't run."),
-            Qt::ToolTipRole);
         row_layout->addWidget(upscaler_combobox, 1);
         nvidia_dlss_group_layout->insertWidget(0, row);
         nvidia_dlss_row->setVisible(false);
         ocarina_fsr_widget->setVisible(false);
-        game_dlss_widget->setVisible(false);
 
         const auto show_choice = [this, chosen] {
             upscaler_combobox->setCurrentIndex(static_cast<int>(chosen()));

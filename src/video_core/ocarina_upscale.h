@@ -52,14 +52,10 @@ constexpr OcarinaUpscalePass FindOcarinaUpscalePass(u64 native_key, u64 shader_h
     return None;
 }
 
-/// With the upscaler off while a boot render-scale patch shrank the scene, FSR 3.1 still
-/// reconstructs it: the game's own upscale would draw the small scene blurry. false: native.
-constexpr bool OCARINA_SCALED_SCENE_KEEPS_FSR = true;
-
-/// render_scaled: a DLSS render-scale patch shrank the scene at boot to a size FSR 3.1 takes, so
-/// FSR 3.1 reconstructs it when DLSS can't run or is turned off.
+/// Only the upscaler the user chose runs: FSR 3.1 stands in only for chosen DLSS that can't run.
+/// Native stays native, also over a scene a boot render-scale patch shrank (the game upscales it).
 constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dlss_enabled,
-                                                    bool dlss_available, bool render_scaled,
+                                                    bool dlss_available,
                                                     std::string_view override) {
     if (override == "native") {
         return OcarinaUpscaleBackend::Native;
@@ -67,12 +63,12 @@ constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dls
     if (override == "fsr") {
         return OcarinaUpscaleBackend::Fsr;
     }
-    if ((dlss_enabled || override == "dlss") && dlss_available) {
+    const bool dlss_wanted = dlss_enabled || override == "dlss";
+    if (dlss_wanted && dlss_available) {
         return OcarinaUpscaleBackend::Dlss;
     }
-    return fsr_enabled || (render_scaled && OCARINA_SCALED_SCENE_KEEPS_FSR)
-               ? OcarinaUpscaleBackend::Fsr
-               : OcarinaUpscaleBackend::Native;
+    return fsr_enabled || dlss_wanted ? OcarinaUpscaleBackend::Fsr
+                                      : OcarinaUpscaleBackend::Native;
 }
 
 /// Texture LOD bias added to Ocarina's mipmapped samplers while FSR upscales. AMD recommends

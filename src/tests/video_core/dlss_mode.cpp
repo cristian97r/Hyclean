@@ -103,18 +103,23 @@ TEST_CASE("The status bar names the upscaler that evaluated since the last tick"
     REQUIRE(ActiveUpscaler(before, now) == Upscaler::Dlss);
 }
 
-TEST_CASE("One upscaler runs: DLSS, then FSR, then the game's own DLSS", "[dlss_mode]") {
-    using enum VideoCore::UpscalerChoice;
+TEST_CASE("Only the chosen upscaler runs; Native is the console's picture", "[dlss_mode]") {
     using VideoCore::ChosenUpscaler;
-    STATIC_REQUIRE(ChosenUpscaler(false, false, false) == Native);
-    STATIC_REQUIRE(ChosenUpscaler(true, false, false) == Dlss);
-    STATIC_REQUIRE(ChosenUpscaler(false, true, false) == Fsr);
-    STATIC_REQUIRE(ChosenUpscaler(false, false, true) == GameDlss);
-    // The game's network never runs beside NVIDIA DLSS or AMD FSR.
-    STATIC_REQUIRE(ChosenUpscaler(true, true, true) == Dlss);
-    STATIC_REQUIRE(ChosenUpscaler(true, false, true) == Dlss);
-    STATIC_REQUIRE(ChosenUpscaler(false, true, true) == Fsr);
-    STATIC_REQUIRE(ChosenUpscaler(true, true, false) == Dlss);
+    using VideoCore::PickGameUpscale;
+    using VideoCore::UpscalerChoice;
+    using enum VideoCore::GameUpscale;
+    STATIC_REQUIRE(ChosenUpscaler(false, false) == UpscalerChoice::Native);
+    STATIC_REQUIRE(ChosenUpscaler(true, false) == UpscalerChoice::Dlss);
+    STATIC_REQUIRE(ChosenUpscaler(false, true) == UpscalerChoice::Fsr);
+    STATIC_REQUIRE(ChosenUpscaler(true, true) == UpscalerChoice::Dlss);
+    // choice, network runs, NVIDIA DLSS runs
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, true, true) == Network);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, false, true) == StandIn);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Native, false, false) == StandIn);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Dlss, true, true) == Dlss);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Dlss, true, false) == Fsr3);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Fsr, true, true) == Fsr3);
+    STATIC_REQUIRE(PickGameUpscale(UpscalerChoice::Fsr, false, false) == Fsr3);
 }
 
 TEST_CASE("The status bar tooltip shows the running upscaler's input and output size",

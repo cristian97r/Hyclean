@@ -2020,11 +2020,22 @@ bool TextureCacheRuntime::WantsTemporalUpscaleDepth() const {
     if (force_standin) {
         return false;
     }
+    // The replacement runs only while the game's network isn't shown.
+    bool dlss_runs = false;
 #ifdef EGLANTINE_DLSS
-    if (DlssUpscaler::Available(device) && !dlss_unsupported) {
-        return true;
-    }
+    dlss_runs = DlssUpscaler::Available(device) && !dlss_unsupported;
 #endif
+    const auto choice = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue());
+    switch (VideoCore::PickGameUpscale(choice, false, dlss_runs)) {
+    case VideoCore::GameUpscale::StandIn:
+    case VideoCore::GameUpscale::Network:
+        return false;
+    case VideoCore::GameUpscale::Dlss:
+        return true;
+    case VideoCore::GameUpscale::Fsr3:
+        break;
+    }
     return !fsr3_unsupported;
 }
 
