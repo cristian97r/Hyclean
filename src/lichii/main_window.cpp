@@ -4681,8 +4681,11 @@ void MainWindow::OnConfigurePerGame() {
 // "properties:<program id hex>[:<tab>]" (the game's properties, found in the game list). The
 // dialog is never accepted, so nothing is saved.
 void MainWindow::RunUiShot(const QString& request) {
+    // Exits at once: nothing was started that needs shutting down, and the normal teardown is
+    // not made for a session that never showed its window.
     const auto finish = [](int code) {
-        QTimer::singleShot(0, [code] { QCoreApplication::exit(code); });
+        Common::Log::Flush();
+        std::_Exit(code);
     };
     const QStringList halves = request.split(QLatin1Char('|'));
     const QStringList spec = halves.value(0).split(QLatin1Char(':'));
