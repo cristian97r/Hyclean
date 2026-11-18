@@ -23,9 +23,17 @@ strip "$bin/lichii" "$bin/eden-cli"
 work=$(mktemp -d /tmp/lichii-package.XXXXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 fsr4=amd_fidelityfx_upscaler_vk.so
-bash tools/fsr4-vk/build.sh "$work/fsr4-vk-work" "$work/fsr4-vk"
-test -s "$work/fsr4-vk/licenses/fsr4-vk/LICENSE"
-test -s "$work/fsr4-vk/licenses/fsr4-vk/AMD-FidelityFX-SDK-license.md"
+fsr4_output=/fsr4-cache
+if [[ -s "$fsr4_output/$fsr4" && -s "$fsr4_output/licenses/fsr4-vk/LICENSE" &&
+      -s "$fsr4_output/licenses/fsr4-vk/AMD-FidelityFX-SDK-license.md" ]]; then
+    echo 'Use cached FSR4 output'
+else
+    fsr4_output="$work/fsr4-vk"
+    echo 'Build FSR4 output'
+    time bash tools/fsr4-vk/build.sh "$work/fsr4-vk-work" "$fsr4_output"
+    test -s "$fsr4_output/licenses/fsr4-vk/LICENSE"
+    test -s "$fsr4_output/licenses/fsr4-vk/AMD-FidelityFX-SDK-license.md"
+fi
 
 cd "$work"
 for tool in linuxdeploy linuxdeploy-plugin-qt; do
@@ -48,10 +56,10 @@ icon=io.github.zortos293.lichii.png
 cp "$dist/lichii.png" "$icon"
 mkdir -p AppDir/usr/bin AppDir/usr/share/licenses
 cp "$bin/nx2_switches.txt" AppDir/usr/bin/
-cp -r fsr4-vk/licenses/fsr4-vk AppDir/usr/share/licenses/
+cp -r "$fsr4_output/licenses/fsr4-vk" AppDir/usr/share/licenses/
 ./linuxdeploy-x86_64.AppImage --appdir AppDir \
     --executable "$bin/lichii" --executable "$bin/eden-cli" \
-    --library "$work/fsr4-vk/$fsr4" --exclude-library 'libvulkan.so*' \
+    --library "$fsr4_output/$fsr4" --exclude-library 'libvulkan.so*' \
     --desktop-file "$dist/io.github.zortos293.lichii.desktop" --icon-file "$work/$icon" \
     --plugin qt --output appimage
 
@@ -69,13 +77,16 @@ diff -qr --no-dereference lichii/usr/lib squashfs-root/usr/lib
 for root in lichii squashfs-root; do
     test -s "$root/usr/bin/qt.conf"
     cmp "$bin/nx2_switches.txt" "$root/usr/bin/nx2_switches.txt"
-    diff -qr fsr4-vk/licenses/fsr4-vk "$root/usr/share/licenses/fsr4-vk"
+    diff -qr "$fsr4_output/licenses/fsr4-vk" "$root/usr/share/licenses/fsr4-vk"
     for plugin in libqwayland-egl.so libqwayland-generic.so; do
         [[ -n $(find "$root/usr" -path "*/platforms/$plugin" -print -quit) ]] || fail "$root lacks $plugin"
     done
     [[ -z $(find "$root" -name 'libvulkan.so*' -print -quit) ]] || fail "$root bundles the Vulkan loader"
 done
-nm -D --defined-only "lichii/usr/lib/$fsr4" | grep -w ffxCreateContext
+nm -D --defined-only "lichii/usr/lib/$fsr4" > fsr4-symbols.txt
+for symbol in ffxCreateContext ffxDestroyContext ffxQuery ffxDispatch; do
+    grep -w "$symbol" fsr4-symbols.txt
+done
 
 # Check dependency resolution without the build's Qt environment; the CLI version path needs no GPU.
 for elf in lichii/usr/bin/{lichii,eden-cli} "lichii/usr/lib/$fsr4"; do
@@ -84,9 +95,12 @@ for elf in lichii/usr/bin/{lichii,eden-cli} "lichii/usr/lib/$fsr4"; do
         fail "$elf has missing dependencies or resolves against external Qt or the build tree"
     fi
 done
-mkdir smoke-home
+mkdir -p smoke-home/{.config,.cache,.local/share}
 env -i HOME="$work/smoke-home" PATH=/usr/bin:/bin timeout 30s ./lichii/eden-cli --version
 
+if [[ $fsr4_output != /fsr4-cache ]]; then
+    cp -a "$fsr4_output/." /fsr4-cache/
+fi
 mkdir -p /out
 mv "$LDAI_OUTPUT" "$name.tar.gz" /out/
 sha256sum "/out/$LDAI_OUTPUT" "/out/$name.tar.gz"

@@ -53,11 +53,14 @@ services:
       CMAKE_BUILD_PARALLEL_LEVEL: ${BUILD_JOBS:-4}
       CCACHE_DIR: /cache/ccache
       CCACHE_COMPILERCHECK: content
-      CCACHE_MAXSIZE: 3000M
+      CCACHE_MAXSIZE: 300M
     volumes:
       - type: bind
         source: ./.cache/linux-release-trial
         target: /cache
+      - type: bind
+        source: ${TRIAL_FSR4_CACHE:-./.cache/linux-release-trial-fsr4}
+        target: /fsr4-cache
       - type: bind
         source: ./builds/linux-release-trial
         target: /out

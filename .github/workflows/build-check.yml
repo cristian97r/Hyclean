@@ -6,6 +6,11 @@ on:
   push:
     branches: [next]
   workflow_dispatch:
+    inputs:
+      seed_linux_fsr4:
+        description: Seed the Compose trial from the existing Linux release FSR4 cache
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,11 +38,28 @@ jobs:
           key: compose-trial-gcc-noble-v1-${{ github.sha }}
           restore-keys: compose-trial-gcc-noble-v1-
 
+      - name: Restore trial FSR4 output
+        id: trial-fsr4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/fsr4-vk
+          key: compose-trial-fsr4-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'tools/fsr4-vk/build.sh') }}
+
+      - name: Seed trial from matching release FSR4 cache (read only)
+        if: inputs.seed_linux_fsr4 && steps.trial-fsr4.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/fsr4-vk
+          key: fsr4-vk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/fsr4-vk/build.sh') }}
+          fail-on-cache-miss: true
+
       - name: Free disk before Compose
         run: df -h . /var/lib/docker
 
       - name: Build and check both release packages
         id: compose
+        env:
+          TRIAL_FSR4_CACHE: ${{ runner.temp }}/fsr4-vk
         run: bash docker/scripts/linux-release-trial.sh
 
       - name: Free disk after Compose
