@@ -1013,7 +1013,7 @@ bool OcarinaUpscaler::Record(VkImageView color, VkImageView depth, VkImageView t
                                COLOR_RANGE, VK_IMAGE_ASPECT_COLOR_BIT},
             .render_size = extent,
             .upscale_size = output_extent,
-            .jitter = {0.0f, 0.0f},
+            .jitter = jitter,
             .motion_vector_scale = {1.0f, 1.0f},
             .reset = reset,
             .depth_inverted = false,

@@ -27,6 +27,14 @@ TEST_CASE("OoT temporal backend selection is opt-in and vendor neutral", "[video
     CHECK(SelectOcarinaUpscaler(false, false, false, "garbage") == Native);
 }
 
+TEST_CASE("OoT jitters the scene for both temporal upscalers, never for the game's own upscale",
+          "[video_core][ocarina]") {
+    using enum VideoCommon::OcarinaUpscaleBackend;
+    STATIC_REQUIRE(VideoCommon::OcarinaJitters(Fsr));
+    STATIC_REQUIRE(VideoCommon::OcarinaJitters(Dlss));
+    STATIC_REQUIRE_FALSE(VideoCommon::OcarinaJitters(Native));
+}
+
 TEST_CASE("OoT FSR texture LOD bias follows the running upscaler, the console mode and the image",
           "[video_core][ocarina]") {
     using enum VideoCommon::OcarinaUpscaleBackend;

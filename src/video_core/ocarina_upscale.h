@@ -71,6 +71,13 @@ constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dls
                                       : OcarinaUpscaleBackend::Native;
 }
 
+/// Whether the scene is drawn jittered for the upscaler. FSR and DLSS take the same offset: in
+/// render pixels, the viewport moved by +jitter, so input texel k holds the scene at
+/// k + 0.5 - jitter, with motion vectors that exclude it (DLSS without MVJittered).
+constexpr bool OcarinaJitters(OcarinaUpscaleBackend backend) {
+    return backend != OcarinaUpscaleBackend::Native;
+}
+
 /// Texture LOD bias added to Ocarina's mipmapped samplers while FSR upscales. AMD recommends
 /// log2(render / output) - 1: -1.58 for docked 1440p -> 4K.
 constexpr float OcarinaFsrLodBias(OcarinaUpscaleBackend backend) {
