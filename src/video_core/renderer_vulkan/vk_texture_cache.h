@@ -353,6 +353,8 @@ public:
                          std::array<f32, 2> motion_scale, bool reset);
     std::unique_ptr<DlssUpscaler> dlss_upscaler;
     bool dlss_unsupported{};
+    bool dlss_paused{}; ///< FSR 3.1 ran while DLSS was unticked; DLSS resumes with a reset
+
 #endif
 
     /// TemporalUpscale's history: its previous result (images[current]) and the image the next

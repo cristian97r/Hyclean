@@ -460,7 +460,9 @@ ngx_module_image ModuleImage(const DlssUpscaler::Image& image, VkExtent2D size) 
 } // Anonymous namespace
 
 bool DlssUpscaler::Available(const Device& device) {
-    return Ngx::EnsureInit(device);
+    // As on Windows, where Streamline only starts with the setting on. Read each call, so
+    // unticking it falls back to FSR 3.1 while the game runs.
+    return Settings::values.nvidia_dlss.GetValue() && Ngx::EnsureInit(device);
 }
 
 DlssUpscaler::DlssUpscaler(const Device& device_, Scheduler& scheduler_,

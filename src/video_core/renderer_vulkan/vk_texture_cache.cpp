@@ -2189,8 +2189,15 @@ bool TextureCacheRuntime::UpscaleWithDlss(Framebuffer* dst_framebuffer, ImageVie
     if (force_fsr || dlss_unsupported) {
         return false;
     }
+    // Off in the settings: FSR 3.1 this frame, DLSS again once it is ticked, from a fresh
+    // history since its last frames are stale by then.
+    if (!Settings::values.nvidia_dlss.GetValue()) {
+        dlss_paused = true;
+        return false;
+    }
+    reset = reset || std::exchange(dlss_paused, false);
     if (!dlss_upscaler) {
-        // Off in the settings, or the backend never started: it has said why.
+        // The backend never started: it has said why.
         if (!DlssUpscaler::Available(device)) {
             dlss_unsupported = true;
             return false;
