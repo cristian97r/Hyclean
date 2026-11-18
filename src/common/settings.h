@@ -694,6 +694,8 @@ struct Values {
                                                            Specialization::Default,
                                                            true,
                                                            true};
+    SwitchableSetting<bool> skip_unbuilt_mesh_draws{linkage, false, "skip_unbuilt_mesh_draws",
+                                                    Category::RendererAdvanced};
 
     SwitchableSetting<u32, true> native_pipeline_wait_ms{linkage,
                                                          8,
