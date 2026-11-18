@@ -113,4 +113,6 @@ private:
     QComboBox* aspect_ratio_combobox;
     QComboBox* resolution_combobox;
     QWidget* amd_fsr4_group{}; ///< The FSR 4 setting and AmdFsr4Panel
+    QComboBox* upscaler_combobox{};  ///< Native, NVIDIA DLSS, AMD FSR, the game's DLSS
+    QComboBox* fsr_model_combobox{}; ///< FSR 3.1 or FSR 4 (amd_fsr4)
 };

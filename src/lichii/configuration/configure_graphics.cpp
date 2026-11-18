@@ -15,7 +15,6 @@
 #include <QLineEdit>
 #include <QPixmap>
 #include <QPushButton>
-#include <QSignalBlocker>
 #include <QSlider>
 #include <QStringLiteral>
 #include <QtCore/qobjectdefs.h>
@@ -38,6 +37,7 @@
 #include "lichii/configuration/configure_graphics.h"
 #include "lichii/configuration/amd_fsr4_panel.h"
 #include "lichii/configuration/nvidia_dlss_panel.h"
+#include "video_core/upscaler_status.h"
 #include "lichii/configuration/shared_widget.h"
 
 #ifdef HAS_RESHADE
@@ -230,7 +230,11 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     QWidget* nvidia_dlss_row = nullptr;
     QVBoxLayout* nvidia_dlss_group_layout = nullptr;
     ConfigurationShared::Widget* ocarina_fsr_widget = nullptr;
+    ConfigurationShared::Widget* game_dlss_widget = nullptr;
 #endif
+    ConfigurationShared::Widget* amd_fsr4_widget = nullptr;
+    ConfigurationShared::Widget* sharpness_widget = nullptr;
+    QComboBox* scaling_filter_combobox = nullptr;
 
     for (const auto setting : Settings::values.linkage.by_category[Settings::Category::Renderer]) {
 #ifndef HAS_RESHADE
@@ -389,7 +393,16 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
         } else if (setting->Id() == Settings::values.ocarina_fsr.Id()) {
             ocarina_fsr_widget = widget;
             hold_graphics.emplace(setting->Id(), widget);
+        } else if (setting->Id() == Settings::values.game_dlss_network.Id()) {
+            game_dlss_widget = widget;
+            hold_graphics.emplace(setting->Id(), widget);
 #endif
+        } else if (setting->Id() == Settings::values.fsr_sharpening_slider.Id()) {
+            sharpness_widget = widget;
+            hold_graphics.emplace(setting->Id(), widget);
+        } else if (setting->Id() == Settings::values.scaling_filter.Id()) {
+            scaling_filter_combobox = widget->combobox;
+            hold_graphics.emplace(setting->Id(), widget);
         } else if (setting->Id() == Settings::values.amd_fsr4.Id()) {
             // AMD's files and a download button under the checkbox, shown for GPUs FSR 4 runs on.
             amd_fsr4_group = new QWidget(this);
@@ -397,6 +410,7 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
             group_layout->setContentsMargins(0, 0, 0, 0);
             group_layout->setSpacing(2);
             group_layout->addWidget(widget);
+            amd_fsr4_widget = widget;
             AmdFsr4Panel* panel = new AmdFsr4Panel(amd_fsr4_group);
             group_layout->addWidget(panel);
             panel->setVisible(widget->checkbox->isChecked());
@@ -433,46 +447,126 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     }
 
 #ifdef EGLANTINE_DLSS
-    // One upscaler choice, as the status bar chip makes it: the combo drives the two settings'
+    // One upscaler choice, as the status bar chip makes it: the combo drives the three settings'
     // checkboxes (hidden), which keep saving them. click() rather than setChecked() so a
     // per-game setting is marked as changed.
-    // ponytail: the two hidden rows take their restore-global buttons with them; add one to the
+    // ponytail: the hidden rows take their restore-global buttons with them; add one to the
     // combo if per-game restore of the upscaler is missed.
-    if (nvidia_dlss_row != nullptr && ocarina_fsr_widget != nullptr) {
-        QCheckBox* const fsr_checkbox = ocarina_fsr_widget->checkbox;
-        if (nvidia_dlss_checkbox->isChecked() && fsr_checkbox->isChecked()) {
-            fsr_checkbox->setChecked(false); // DLSS wins, as the renderer picks it
+    if (nvidia_dlss_row != nullptr && ocarina_fsr_widget != nullptr &&
+        game_dlss_widget != nullptr) {
+        using VideoCore::UpscalerChoice;
+        const std::array<QCheckBox*, 3> checkboxes{nvidia_dlss_checkbox,
+                                                   ocarina_fsr_widget->checkbox,
+                                                   game_dlss_widget->checkbox};
+        const auto chosen = [=] {
+            return VideoCore::ChosenUpscaler(checkboxes[0]->isChecked(),
+                                             checkboxes[1]->isChecked(),
+                                             checkboxes[2]->isChecked());
+        };
+        // Several on (an older configuration): keep the one the renderer runs.
+        const auto set_choice = [=](UpscalerChoice choice) {
+            for (size_t i = 0; i < checkboxes.size(); ++i) {
+                if (checkboxes[i]->isChecked() != (static_cast<size_t>(choice) == i + 1)) {
+                    checkboxes[i]->click();
+                }
+            }
+        };
+        const UpscalerChoice initial = chosen();
+        for (size_t i = 0; i < checkboxes.size(); ++i) {
+            checkboxes[i]->setChecked(static_cast<size_t>(initial) == i + 1);
         }
+
         QWidget* const row = new QWidget(this);
         QHBoxLayout* const row_layout = new QHBoxLayout(row);
         row_layout->setContentsMargins(0, 0, 0, 0);
-        row_layout->addWidget(new QLabel(tr("Upscaler"), row), 1);
-        QComboBox* const upscaler = new QComboBox(row);
-        upscaler->addItem(tr("Off"));
-        upscaler->addItem(tr("NVIDIA DLSS"));
-        upscaler->addItem(tr("AMD FSR"));
-        row_layout->addWidget(upscaler, 1);
+        row_layout->addWidget(new QLabel(tr("Upscaler:"), row), 1);
+        upscaler_combobox = new QComboBox(row);
+        // In UpscalerChoice order.
+        upscaler_combobox->addItem(tr("Native"));
+        upscaler_combobox->setItemData(
+            0, tr("The game's own upscale, as on the console."), Qt::ToolTipRole);
+        upscaler_combobox->addItem(tr("NVIDIA DLSS"));
+        upscaler_combobox->setItemData(
+            1, tr("NVIDIA's AI upscaler. Needs an NVIDIA RTX GPU and NVIDIA's files (Download "
+                  "below). Sharpest picture; AMD FSR runs where DLSS can't."),
+            Qt::ToolTipRole);
+        upscaler_combobox->addItem(tr("AMD FSR"));
+        upscaler_combobox->setItemData(
+            2, tr("AMD's upscaler. Runs on any GPU; FSR 4 on AMD GPUs that support it."),
+            Qt::ToolTipRole);
+        upscaler_combobox->addItem(tr("Game's DLSS"));
+        upscaler_combobox->setItemData(
+            3, tr("The game's own DLSS network, translated for this GPU (Switch 2 games that "
+                  "ship one). AMD FSR draws while it is checked and when it can't run."),
+            Qt::ToolTipRole);
+        row_layout->addWidget(upscaler_combobox, 1);
         nvidia_dlss_group_layout->insertWidget(0, row);
         nvidia_dlss_row->setVisible(false);
         ocarina_fsr_widget->setVisible(false);
+        game_dlss_widget->setVisible(false);
 
-        const auto show_choice = [=] {
-            const QSignalBlocker blocker{upscaler};
-            upscaler->setCurrentIndex(nvidia_dlss_checkbox->isChecked() ? 1
-                                      : fsr_checkbox->isChecked()       ? 2
-                                                                        : 0);
+        const auto show_choice = [this, chosen] {
+            upscaler_combobox->setCurrentIndex(static_cast<int>(chosen()));
+            UpdateAmdFsr4Visibility();
         };
         show_choice();
-        connect(upscaler, &QComboBox::activated, this, [=](int index) {
-            for (const auto& [checkbox, want] :
-                 {std::pair{nvidia_dlss_checkbox, index == 1}, std::pair{fsr_checkbox, index == 2}}) {
-                if (checkbox->isChecked() != want) {
-                    checkbox->click();
-                }
-            }
+        connect(upscaler_combobox, &QComboBox::activated, this, [set_choice](int index) {
+            set_choice(static_cast<UpscalerChoice>(index));
         });
-        connect(nvidia_dlss_checkbox, &QCheckBox::toggled, upscaler, show_choice);
-        connect(fsr_checkbox, &QCheckBox::toggled, upscaler, show_choice);
+        for (QCheckBox* const checkbox : checkboxes) {
+            connect(checkbox, &QCheckBox::toggled, upscaler_combobox, show_choice);
+        }
+
+        // FSR's model, like DLSS's preset: a combo over the amd_fsr4 checkbox (hidden).
+        if (amd_fsr4_widget != nullptr) {
+            QCheckBox* const fsr4_checkbox = amd_fsr4_widget->checkbox;
+            QWidget* const model_row = new QWidget(amd_fsr4_group);
+            QHBoxLayout* const model_layout = new QHBoxLayout(model_row);
+            model_layout->setContentsMargins(0, 0, 0, 0);
+            model_layout->addWidget(new QLabel(tr("AMD FSR model:"), model_row), 1);
+            fsr_model_combobox = new QComboBox(model_row);
+            fsr_model_combobox->addItem(tr("FSR 3.1"));
+            fsr_model_combobox->addItem(tr("FSR 4"));
+            fsr_model_combobox->setCurrentIndex(fsr4_checkbox->isChecked() ? 1 : 0);
+            model_layout->addWidget(fsr_model_combobox, 1);
+            static_cast<QVBoxLayout*>(amd_fsr4_group->layout())->insertWidget(0, model_row);
+            amd_fsr4_widget->setVisible(false);
+            connect(fsr_model_combobox, &QComboBox::activated, this, [fsr4_checkbox](int index) {
+                if (fsr4_checkbox->isChecked() != (index == 1)) {
+                    fsr4_checkbox->click();
+                }
+            });
+            connect(upscaler_combobox, &QComboBox::currentIndexChanged, this,
+                    [this] { UpdateAmdFsr4Visibility(); });
+            UpdateAmdFsr4Visibility();
+        }
+
+        // RCAS sharpness serves AMD FSR and the FSR and SGSR window adapting filters.
+        if (sharpness_widget != nullptr) {
+            const auto update_sharpness = [=, this] {
+                const auto filter =
+                    scaling_filter_combobox != nullptr
+                        ? static_cast<Settings::ScalingFilter>(
+                              scaling_filter_combobox->currentData().toUInt())
+                        : Settings::values.scaling_filter.GetValue();
+                const bool used =
+                    upscaler_combobox->currentIndex() == static_cast<int>(UpscalerChoice::Fsr) ||
+                    filter == Settings::ScalingFilter::Fsr ||
+                    filter == Settings::ScalingFilter::Fsr3 ||
+                    filter == Settings::ScalingFilter::Sgsr ||
+                    filter == Settings::ScalingFilter::SgsrEdge;
+                sharpness_widget->setEnabled(used);
+                sharpness_widget->setToolTip(
+                    used ? QString{} : tr("Used by AMD FSR and the FSR/SGSR window filters."));
+            };
+            update_sharpness();
+            connect(upscaler_combobox, &QComboBox::currentIndexChanged, sharpness_widget,
+                    update_sharpness);
+            if (scaling_filter_combobox != nullptr) {
+                connect(scaling_filter_combobox, &QComboBox::currentIndexChanged,
+                        sharpness_widget, update_sharpness);
+            }
+        }
     }
 
     // The panel lists DLSS Frame Generation's files too while that frame generation type is
@@ -664,9 +758,18 @@ void ConfigureGraphics::UpdateAmdFsr4Visibility() {
         return;
     }
     const int device = vulkan_device_combobox->currentIndex();
-    amd_fsr4_group->setVisible(GetCurrentGraphicsBackend() == Settings::RendererBackend::Vulkan &&
-                               device >= 0 && static_cast<size_t>(device) < records.size() &&
-                               records[device].fsr4_capable);
+    const bool vulkan = GetCurrentGraphicsBackend() == Settings::RendererBackend::Vulkan;
+    const bool capable = vulkan && device >= 0 && static_cast<size_t>(device) < records.size() &&
+                         records[device].fsr4_capable;
+    if (fsr_model_combobox == nullptr) {
+        amd_fsr4_group->setVisible(capable);
+        return;
+    }
+    // The FSR model row shows with AMD FSR chosen; FSR 4 only where it can run.
+    amd_fsr4_group->setVisible(vulkan && upscaler_combobox->currentIndex() ==
+                                             static_cast<int>(VideoCore::UpscalerChoice::Fsr));
+    fsr_model_combobox->setEnabled(capable);
+    fsr_model_combobox->setToolTip(capable ? QString{} : tr("FSR 4 needs an AMD GPU."));
 }
 
 void ConfigureGraphics::RetrieveVulkanDevices() {

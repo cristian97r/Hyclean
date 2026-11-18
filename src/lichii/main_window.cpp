@@ -1328,38 +1328,36 @@ void MainWindow::InitializeWidgets() {
     upscaler_status_button->setFocusPolicy(Qt::NoFocus);
     upscaler_status_button->setCheckable(true);
     upscaler_status_button->setVisible(false);
-    // DLSS, then FSR, then off. FSR 4 takes FSR's turn where it runs.
+    // DLSS, then FSR, then native. FSR 4 takes FSR's turn where it runs.
     connect(upscaler_status_button, &QPushButton::clicked, this, [this] {
-        auto& dlss = Settings::values.nvidia_dlss;
-        auto& fsr = Settings::values.ocarina_fsr;
-        if (dlss.GetValue()) {
-            dlss.SetValue(false);
-            fsr.SetValue(true);
-        } else if (fsr.GetValue()) {
-            fsr.SetValue(false);
-        } else {
-            dlss.SetValue(DlssInstalled());
-            fsr.SetValue(!dlss.GetValue());
+        using enum VideoCore::UpscalerChoice;
+        switch (VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                          Settings::values.ocarina_fsr.GetValue(),
+                                          Settings::values.game_dlss_network.GetValue())) {
+        case Dlss:
+            ChooseUpscaler(Fsr);
+            break;
+        case Fsr:
+            ChooseUpscaler(Native);
+            break;
+        case Native:
+        case GameDlss:
+            ChooseUpscaler(DlssInstalled() ? Dlss : Fsr);
+            break;
         }
-        Settings::RefreshNvidiaDlssRuntimeSettings();
-        UpdateUpscalerButton(VideoCore::Upscaler::None);
     });
     upscaler_status_button->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(upscaler_status_button, &QPushButton::customContextMenuRequested,
             [this](const QPoint& menu_location) {
+                using enum VideoCore::UpscalerChoice;
                 QMenu context_menu;
-                const auto choose = [this](bool dlss, bool fsr) {
-                    Settings::values.nvidia_dlss.SetValue(dlss);
-                    Settings::values.ocarina_fsr.SetValue(fsr);
-                    Settings::RefreshNvidiaDlssRuntimeSettings();
-                    UpdateUpscalerButton(VideoCore::Upscaler::None);
-                };
                 QMenu* const upscaler = context_menu.addMenu(tr("Upscaler"));
+                upscaler->addAction(tr("Native"), [this] { ChooseUpscaler(Native); });
                 if (DlssInstalled()) {
-                    upscaler->addAction(tr("NVIDIA DLSS"), [choose] { choose(true, false); });
+                    upscaler->addAction(tr("NVIDIA DLSS"), [this] { ChooseUpscaler(Dlss); });
                 }
-                upscaler->addAction(tr("AMD FSR"), [choose] { choose(false, true); });
-                upscaler->addAction(tr("Off"), [choose] { choose(false, false); });
+                upscaler->addAction(tr("AMD FSR"), [this] { ChooseUpscaler(Fsr); });
+                upscaler->addAction(tr("Game's DLSS"), [this] { ChooseUpscaler(GameDlss); });
 
                 QMenu* const quality = context_menu.addMenu(tr("DLSS quality"));
                 for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
@@ -6029,6 +6027,15 @@ void MainWindow::UpdatePostShaderText() {
 }
 #endif
 
+void MainWindow::ChooseUpscaler(VideoCore::UpscalerChoice choice) {
+    using enum VideoCore::UpscalerChoice;
+    Settings::values.nvidia_dlss.SetValue(choice == Dlss);
+    Settings::values.ocarina_fsr.SetValue(choice == Fsr);
+    Settings::values.game_dlss_network.SetValue(choice == GameDlss);
+    Settings::RefreshNvidiaDlssRuntimeSettings();
+    UpdateUpscalerButton(VideoCore::Upscaler::None);
+}
+
 void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
     const auto& status = upscaler_status;
     const auto mode_text = [this](Settings::NvidiaDlssQuality mode) {
@@ -6036,15 +6043,20 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
                    translator, ConfigurationShared::nvidia_dlss_quality_texts_map.at(mode))
             .toUpper();
     };
-    const bool dlss_chosen = Settings::values.nvidia_dlss.GetValue();
-    const bool upscaler_chosen = dlss_chosen || Settings::values.ocarina_fsr.GetValue();
-    if (!upscaler_chosen) {
-        // Off: the chip stays, unchecked, so a click turns it back on.
+    const auto choice = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue(),
+                                                  Settings::values.game_dlss_network.GetValue());
+    const bool dlss_chosen = choice == VideoCore::UpscalerChoice::Dlss;
+    if (choice == VideoCore::UpscalerChoice::Native ||
+        (choice == VideoCore::UpscalerChoice::GameDlss && running == VideoCore::Upscaler::None)) {
+        // Native (or the game's own DLSS): the chip stays, unchecked, so a click turns ours on.
         dlss_status_text.clear();
-        upscaler_status_button->setText(tr("UPSCALER"));
+        upscaler_status_button->setText(choice == VideoCore::UpscalerChoice::Native
+                                            ? tr("NATIVE")
+                                            : tr("GAME DLSS"));
         upscaler_status_button->setToolTip(
-            tr("No upscaler is chosen.<br>Click: DLSS, FSR, off. Right-click: upscaler, DLSS "
-               "quality and preset."));
+            tr("No Lichii upscaler is chosen.<br>Click: DLSS, FSR, native. Right-click: "
+               "upscaler, DLSS quality and preset."));
         upscaler_status_button->setChecked(false);
         upscaler_status_button->setVisible(emulation_running);
         return;
@@ -6101,7 +6113,8 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
         Settings::OcarinaRenderScaleAtNextStart() != Settings::AppliedOcarinaRenderScale()) {
         tooltip += tr("<br>The render scale for this quality applies at the game's next start.");
     }
-    tooltip += tr("<br>Click: DLSS, FSR, off. Right-click: upscaler, DLSS quality and preset.");
+    tooltip +=
+        tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and preset.");
     upscaler_status_button->setText(badge);
     upscaler_status_button->setToolTip(tooltip);
     upscaler_status_button->setChecked(true);

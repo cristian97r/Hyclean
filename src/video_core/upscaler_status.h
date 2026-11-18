@@ -13,6 +13,21 @@ namespace VideoCore {
 
 enum class Upscaler : u8 { None, Dlss, Fsr3, Fsr4 };
 
+/// The one upscaler the settings choose (settings page combo, status bar chip).
+enum class UpscalerChoice : u8 { Native, Dlss, Fsr, GameDlss };
+
+/// The settings page and the chip turn one on at a time; a configuration with several on resolves
+/// as the renderer runs them: NVIDIA DLSS, then AMD FSR, then the game's own DLSS.
+constexpr UpscalerChoice ChosenUpscaler(bool nvidia_dlss, bool ocarina_fsr, bool game_dlss_network) {
+    if (nvidia_dlss) {
+        return UpscalerChoice::Dlss;
+    }
+    if (ocarina_fsr) {
+        return UpscalerChoice::Fsr;
+    }
+    return game_dlss_network ? UpscalerChoice::GameDlss : UpscalerChoice::Native;
+}
+
 /// An evaluation's input and output size, packed in one word so an atomic holds it.
 struct UpscaleSize {
     u32 render_width{}, render_height{}, output_width{}, output_height{};

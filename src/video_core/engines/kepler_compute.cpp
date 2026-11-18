@@ -33,6 +33,7 @@
 #include "video_core/nx2_list_macro_trace.h"
 #include "video_core/engines/fermi_2d.h"
 #include "video_core/engines/kepler_compute.h"
+#include "video_core/upscaler_status.h"
 #include "video_core/engines/native_upscale.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/game_dlss_status.h"
@@ -926,8 +927,12 @@ VideoCore::GameDlssReason KeplerCompute::GameDlssBlocker() const {
         VideoCommon::FireEmblemUpscale::ProgramId,
         VideoCommon::FireEmblemUpscale::OutputProgramKey, option);
     const bool forced_native = option && !forced_replacement;
-    if (forced_replacement ||
-        (!forced_native && !Settings::values.game_dlss_network.GetValue())) {
+    // Only while it is the chosen upscaler: never together with NVIDIA DLSS or AMD FSR.
+    const bool chosen = VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                                  Settings::values.ocarina_fsr.GetValue(),
+                                                  Settings::values.game_dlss_network.GetValue()) ==
+                        VideoCore::UpscalerChoice::GameDlss;
+    if (forced_replacement || (!forced_native && !chosen)) {
         return GameDlssReason::TurnedOff;
     }
     // NVIDIA DLSS, when turned on and running, comes first.

@@ -103,6 +103,20 @@ TEST_CASE("The status bar names the upscaler that evaluated since the last tick"
     REQUIRE(ActiveUpscaler(before, now) == Upscaler::Dlss);
 }
 
+TEST_CASE("One upscaler runs: DLSS, then FSR, then the game's own DLSS", "[dlss_mode]") {
+    using enum VideoCore::UpscalerChoice;
+    using VideoCore::ChosenUpscaler;
+    STATIC_REQUIRE(ChosenUpscaler(false, false, false) == Native);
+    STATIC_REQUIRE(ChosenUpscaler(true, false, false) == Dlss);
+    STATIC_REQUIRE(ChosenUpscaler(false, true, false) == Fsr);
+    STATIC_REQUIRE(ChosenUpscaler(false, false, true) == GameDlss);
+    // The game's network never runs beside NVIDIA DLSS or AMD FSR.
+    STATIC_REQUIRE(ChosenUpscaler(true, true, true) == Dlss);
+    STATIC_REQUIRE(ChosenUpscaler(true, false, true) == Dlss);
+    STATIC_REQUIRE(ChosenUpscaler(false, true, true) == Fsr);
+    STATIC_REQUIRE(ChosenUpscaler(true, true, false) == Dlss);
+}
+
 TEST_CASE("The status bar tooltip shows the running upscaler's input and output size",
           "[dlss_mode]") {
     using VideoCore::RunningUpscaleSize;
