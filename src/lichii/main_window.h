@@ -524,6 +524,8 @@ private:
     void OpenURL(const QUrl& url);
     void LoadTranslation();
     void OpenPerGameConfiguration(u64 title_id, const std::string& file_name);
+    /// LICHII_UI_SHOT="<spec>|<out.png>": renders one settings dialog page to a PNG and quits.
+    void RunUiShot(const QString& request);
     bool CheckFirmwarePresence();
     void SetFirmwareVersion();
     void SetFPSSuffix();
