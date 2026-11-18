@@ -27,9 +27,12 @@ TEST_CASE("OoT temporal backend selection is opt-in and vendor neutral", "[video
     CHECK(SelectOcarinaUpscaler(false, true, false, true, "") == Fsr);
     CHECK(SelectOcarinaUpscaler(false, true, true, true, "") == Dlss);
     CHECK(SelectOcarinaUpscaler(false, true, false, true, "native") == Native);
+    // Upscaler turned off while the boot patch's render scale stays: FSR 3.1 keeps reconstructing.
+    CHECK(SelectOcarinaUpscaler(false, false, true, true, "") ==
+          (VideoCommon::OCARINA_SCALED_SCENE_KEEPS_FSR ? Fsr : Native));
 }
 
-TEST_CASE("OoT FSR texture LOD bias follows the upscaler, the console mode and failure",
+TEST_CASE("OoT FSR texture LOD bias follows the running upscaler, the console mode and the image",
           "[video_core][ocarina]") {
     using enum VideoCommon::OcarinaUpscaleBackend;
     using VideoCommon::KeepOcarinaFsrLodBias;
@@ -37,11 +40,12 @@ TEST_CASE("OoT FSR texture LOD bias follows the upscaler, the console mode and f
     CHECK(OcarinaFsrLodBias(Fsr) == -1.58f);
     CHECK(OcarinaFsrLodBias(Dlss) == 0.0f);
     CHECK(OcarinaFsrLodBias(Native) == 0.0f);
-    CHECK(KeepOcarinaFsrLodBias(true, false, false));
-    CHECK_FALSE(KeepOcarinaFsrLodBias(false, false, false));
-    CHECK_FALSE(KeepOcarinaFsrLodBias(true, false, true));
-    CHECK_FALSE(KeepOcarinaFsrLodBias(true, true, false));
+    // fsr_running, docked, gpu_written
+    CHECK(KeepOcarinaFsrLodBias(true, true, false));
+    CHECK_FALSE(KeepOcarinaFsrLodBias(false, true, false));
+    CHECK_FALSE(KeepOcarinaFsrLodBias(true, false, false));
     CHECK_FALSE(KeepOcarinaFsrLodBias(true, true, true));
+    CHECK_FALSE(KeepOcarinaFsrLodBias(false, false, true));
 }
 
 TEST_CASE("FSR temporal sharpness uses the existing stops slider", "[video_core][fsr][ocarina]") {

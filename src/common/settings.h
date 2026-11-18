@@ -1161,6 +1161,8 @@ struct NvidiaDlssRuntimeSettings {
 
 void RefreshNvidiaDlssRuntimeSettings();
 NvidiaDlssRuntimeSettings GetNvidiaDlssRuntimeSettings();
+/// Changes with every RefreshNvidiaDlssRuntimeSettings: the renderer picks the upscaler again.
+u32 UpscalerSettingsGeneration();
 
 /// The NVIDIA DLSS quality whose render scale Ocarina of Time's built-in patch applies when the
 /// game starts: Balanced, Performance or Ultra Performance with NVIDIA DLSS on, docked.

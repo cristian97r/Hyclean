@@ -331,12 +331,14 @@ public:
     std::unique_ptr<Fsr3Upscaler> fsr3_upscaler;
     bool fsr3_unsupported{};
 
-    /// The LOD bias Ocarina's FSR adds to mipmapped samplers this session (0 for other games or
-    /// upscalers), resolved on first use.
-    [[nodiscard]] f32 OcarinaFsrLodBias();
-    std::optional<f32> ocarina_fsr_lod_bias;
-    /// Set when the Ocarina upscaler fails during the session: samplers drop the bias again.
-    bool ocarina_fsr_failed{};
+    /// The LOD bias Ocarina's FSR adds to mipmapped samplers (0 for other games). Every Ocarina
+    /// sampler holds it; a variant without it serves while FSR does not run.
+    [[nodiscard]] f32 OcarinaFsrLodBias() const;
+    /// Set by the rasterizer while Ocarina's FSR upscales: samplers keep the bias. The upscaler
+    /// can change at any frame, so samplers check it on every bind.
+    bool ocarina_fsr_running{};
+    /// Sampler variants made without the FSR bias (the cost of switching live), for the log.
+    u64 ocarina_unbiased_samplers{};
     /// The game DLSS network's health check (ProbeGameDlssOutput), created on first use.
     std::unique_ptr<DlssNetworkProbe> dlss_network_probe;
     std::optional<std::chrono::steady_clock::time_point> fsr3_last_evaluation;
@@ -955,7 +957,7 @@ private:
         bool drop_custom_border;
         bool srgb_border;
         bool drop_compare;
-        bool drop_lod_bias; ///< the image was written by the GPU: no Ocarina FSR LOD bias
+        bool drop_lod_bias; ///< FSR isn't running or the GPU wrote the image: no Ocarina FSR bias
         std::array<VkComponentSwizzle, 4> swizzle;
 
         bool operator==(const VariantKey&) const noexcept = default;
@@ -980,7 +982,7 @@ private:
     std::vector<Variant> variants;
 
     const Device* device_ptr{nullptr};
-    const bool* ocarina_fsr_failed{}; ///< TextureCacheRuntime::ocarina_fsr_failed
+    TextureCacheRuntime* runtime{}; ///< ocarina_fsr_running and the unbiased variant count
     Tegra::Texture::TSCEntry descriptor{};
     VkSamplerCreateInfo base_ci{};
     VkSamplerReductionModeEXT reduction_mode{VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT};

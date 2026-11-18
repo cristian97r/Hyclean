@@ -285,6 +285,8 @@ private:
     /// gets new sample positions each frame (the game renders without jitter). The offset goes to
     /// FSR with the frame.
     void UpdateOcarinaJitter();
+    /// At a frame boundary: pick Ocarina's upscaler again when the settings changed.
+    void RefreshOcarinaUpscaler();
     void TrackOcarinaActor(u64 shader_hash, bool is_indexed, bool is_indirect);
     bool TryOcarinaUpscale(const ComputePipeline& pipeline, u64 native_key, bool replace);
     void ReadOcarinaActor(struct OcarinaActorMesh& mesh);
@@ -334,6 +336,7 @@ private:
     };
     std::optional<OcarinaCameraRefusal> oot_camera_refusal;
     mutable std::optional<VideoCommon::OcarinaUpscaleBackend> oot_backend;
+    mutable u32 oot_settings_generation{};
     /// The game started at the DLSS Performance render scale (1920x1080).
     bool oot_performance_scale{};
     struct OcarinaMotionTrace {

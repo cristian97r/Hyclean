@@ -52,8 +52,12 @@ constexpr OcarinaUpscalePass FindOcarinaUpscalePass(u64 native_key, u64 shader_h
     return None;
 }
 
-/// render_scaled: a DLSS render-scale patch shrank the scene to a size FSR 3.1 takes, so FSR 3.1
-/// reconstructs it when DLSS can't run.
+/// With the upscaler off while a boot render-scale patch shrank the scene, FSR 3.1 still
+/// reconstructs it: the game's own upscale would draw the small scene blurry. false: native.
+constexpr bool OCARINA_SCALED_SCENE_KEEPS_FSR = true;
+
+/// render_scaled: a DLSS render-scale patch shrank the scene at boot to a size FSR 3.1 takes, so
+/// FSR 3.1 reconstructs it when DLSS can't run or is turned off.
 constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dlss_enabled,
                                                     bool dlss_available, bool render_scaled,
                                                     std::string_view override) {
@@ -66,8 +70,9 @@ constexpr OcarinaUpscaleBackend SelectOcarinaUpscaler(bool fsr_enabled, bool dls
     if ((dlss_enabled || override == "dlss") && dlss_available) {
         return OcarinaUpscaleBackend::Dlss;
     }
-    return fsr_enabled || render_scaled ? OcarinaUpscaleBackend::Fsr
-                                        : OcarinaUpscaleBackend::Native;
+    return fsr_enabled || (render_scaled && OCARINA_SCALED_SCENE_KEEPS_FSR)
+               ? OcarinaUpscaleBackend::Fsr
+               : OcarinaUpscaleBackend::Native;
 }
 
 /// Texture LOD bias added to Ocarina's mipmapped samplers while FSR upscales. AMD recommends
@@ -76,11 +81,11 @@ constexpr float OcarinaFsrLodBias(OcarinaUpscaleBackend backend) {
     return backend == OcarinaUpscaleBackend::Fsr ? -1.58f : 0.0f;
 }
 
-/// Whether a sampler with that bias keeps it for an image: only docked (handheld isn't measured),
-/// not for images the GPU wrote (render targets would read a mip too sharp), and not once the
-/// upscaler failed this session (the game's own pass runs again).
-constexpr bool KeepOcarinaFsrLodBias(bool docked, bool upscaler_failed, bool gpu_written) {
-    return docked && !upscaler_failed && !gpu_written;
+/// Whether a sampler with that bias keeps it for an image: only while FSR runs (not with DLSS,
+/// off, or once it failed and the game's own pass runs again), only docked (handheld isn't
+/// measured), and not for images the GPU wrote (render targets would read a mip too sharp).
+constexpr bool KeepOcarinaFsrLodBias(bool fsr_running, bool docked, bool gpu_written) {
+    return fsr_running && docked && !gpu_written;
 }
 
 } // namespace VideoCommon

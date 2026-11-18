@@ -5003,13 +5003,10 @@ void CustomBorderColorBudget::Release() noexcept {
     held = 0;
 }
 
-f32 TextureCacheRuntime::OcarinaFsrLodBias() {
-    if (!ocarina_fsr_lod_bias) {
-        const bool ocarina = Settings::GetCurrentProgramID() == 0x0400486024DEC000ULL;
-        ocarina_fsr_lod_bias =
-            ocarina ? VideoCommon::OcarinaFsrLodBias(ResolveOcarinaUpscaler(device)) : 0.0f;
-    }
-    return *ocarina_fsr_lod_bias;
+f32 TextureCacheRuntime::OcarinaFsrLodBias() const {
+    const bool ocarina = Settings::GetCurrentProgramID() == 0x0400486024DEC000ULL;
+    return ocarina ? VideoCommon::OcarinaFsrLodBias(VideoCommon::OcarinaUpscaleBackend::Fsr)
+                   : 0.0f;
 }
 
 Sampler::Sampler(TextureCacheRuntime& runtime, const Tegra::Texture::TSCEntry& tsc) {
@@ -5082,7 +5079,7 @@ Sampler::Sampler(TextureCacheRuntime& runtime, const Tegra::Texture::TSCEntry& t
     // Ocarina with FSR: FSR renders below the output size, so textures would pick the render
     // size's mips; the bias keeps the output's detail (VideoCommon::OcarinaFsrLodBias).
     f32 lod_bias = tsc.LodBias();
-    ocarina_fsr_failed = &runtime.ocarina_fsr_failed;
+    this->runtime = &runtime;
     if (const f32 fsr_lod_bias = runtime.OcarinaFsrLodBias();
         fsr_lod_bias != 0.0f && tsc.mipmap_filter != TextureMipmapFilter::None) {
         const f32 biased = std::clamp(lod_bias + fsr_lod_bias, -15.0f, 15.0f);
@@ -5130,12 +5127,12 @@ Sampler::VariantKey Sampler::MakeKey(const ImageView& image_view, bool is_depth)
     key.drop_compare = has_depth_comparison && !is_depth;
     // The FSR bias is for the game's textures. Images the GPU wrote (render targets: bloom and
     // blur chains, reflections, fog) keep the game's own bias, or they'd read a mip too sharp.
-    // So does every image in handheld mode (the console mode can change in-session), and after
-    // the upscaler failed this session (the game's pass runs again).
+    // So does every image in handheld mode (the console mode can change in-session), and every
+    // image while FSR does not run (DLSS, off, or failed: the game's pass runs again).
     if (added_lod_bias != 0.0f) {
         const Image* const image = image_view.BackingImage();
         key.drop_lod_bias = !VideoCommon::KeepOcarinaFsrLodBias(
-            Settings::IsDockedMode(), *ocarina_fsr_failed,
+            runtime->ocarina_fsr_running, Settings::IsDockedMode(),
             image != nullptr && True(image->flags & ImageFlagBits::GpuModified));
     }
     if (needs_swizzle_mapping && !key.drop_custom_border && !image_view.HasIdentitySwizzle()) {
@@ -5203,6 +5200,7 @@ VkSampler Sampler::Emplace(VariantKey key) {
     VkSamplerCreateInfo create_info = base_ci;
     if (key.drop_lod_bias) {
         create_info.mipLodBias -= added_lod_bias;
+        ++runtime->ocarina_unbiased_samplers;
     }
     if (key.drop_compare) {
         create_info.compareEnable = VK_FALSE;
