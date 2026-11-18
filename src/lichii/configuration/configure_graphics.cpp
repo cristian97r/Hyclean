@@ -15,6 +15,7 @@
 #include <QLineEdit>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QStringLiteral>
 #include <QtCore/qobjectdefs.h>
@@ -226,6 +227,9 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     QCheckBox* nvidia_dlss_checkbox = nullptr;
 #ifdef EGLANTINE_DLSS
     NvidiaDlssPanel* nvidia_dlss_panel = nullptr;
+    QWidget* nvidia_dlss_row = nullptr;
+    QVBoxLayout* nvidia_dlss_group_layout = nullptr;
+    ConfigurationShared::Widget* ocarina_fsr_widget = nullptr;
 #endif
 
     for (const auto setting : Settings::values.linkage.by_category[Settings::Category::Renderer]) {
@@ -380,6 +384,11 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
             nvidia_dlss_panel = new NvidiaDlssPanel(group);
             group_layout->addWidget(nvidia_dlss_panel);
             hold_graphics.emplace(setting->Id(), group);
+            nvidia_dlss_row = widget;
+            nvidia_dlss_group_layout = group_layout;
+        } else if (setting->Id() == Settings::values.ocarina_fsr.Id()) {
+            ocarina_fsr_widget = widget;
+            hold_graphics.emplace(setting->Id(), widget);
 #endif
         } else if (setting->Id() == Settings::values.amd_fsr4.Id()) {
             // AMD's files and a download button under the checkbox, shown for GPUs FSR 4 runs on.
@@ -424,6 +433,48 @@ void ConfigureGraphics::Setup(const ConfigurationShared::Builder& builder) {
     }
 
 #ifdef EGLANTINE_DLSS
+    // One upscaler choice, as the status bar chip makes it: the combo drives the two settings'
+    // checkboxes (hidden), which keep saving them. click() rather than setChecked() so a
+    // per-game setting is marked as changed.
+    // ponytail: the two hidden rows take their restore-global buttons with them; add one to the
+    // combo if per-game restore of the upscaler is missed.
+    if (nvidia_dlss_row != nullptr && ocarina_fsr_widget != nullptr) {
+        QCheckBox* const fsr_checkbox = ocarina_fsr_widget->checkbox;
+        if (nvidia_dlss_checkbox->isChecked() && fsr_checkbox->isChecked()) {
+            fsr_checkbox->setChecked(false); // DLSS wins, as the renderer picks it
+        }
+        QWidget* const row = new QWidget(this);
+        QHBoxLayout* const row_layout = new QHBoxLayout(row);
+        row_layout->setContentsMargins(0, 0, 0, 0);
+        row_layout->addWidget(new QLabel(tr("Upscaler"), row), 1);
+        QComboBox* const upscaler = new QComboBox(row);
+        upscaler->addItem(tr("Off"));
+        upscaler->addItem(tr("NVIDIA DLSS"));
+        upscaler->addItem(tr("AMD FSR"));
+        row_layout->addWidget(upscaler, 1);
+        nvidia_dlss_group_layout->insertWidget(0, row);
+        nvidia_dlss_row->setVisible(false);
+        ocarina_fsr_widget->setVisible(false);
+
+        const auto show_choice = [=] {
+            const QSignalBlocker blocker{upscaler};
+            upscaler->setCurrentIndex(nvidia_dlss_checkbox->isChecked() ? 1
+                                      : fsr_checkbox->isChecked()       ? 2
+                                                                        : 0);
+        };
+        show_choice();
+        connect(upscaler, &QComboBox::activated, this, [=](int index) {
+            for (const auto& [checkbox, want] :
+                 {std::pair{nvidia_dlss_checkbox, index == 1}, std::pair{fsr_checkbox, index == 2}}) {
+                if (checkbox->isChecked() != want) {
+                    checkbox->click();
+                }
+            }
+        });
+        connect(nvidia_dlss_checkbox, &QCheckBox::toggled, upscaler, show_choice);
+        connect(fsr_checkbox, &QCheckBox::toggled, upscaler, show_choice);
+    }
+
     // The panel lists DLSS Frame Generation's files too while that frame generation type is
     // chosen, and shows for it even before "Use NVIDIA DLSS" is ticked.
     if (nvidia_dlss_panel != nullptr) {
