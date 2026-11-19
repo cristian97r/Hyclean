@@ -69,6 +69,11 @@ shaders that cause these pauses.
 
 ### Tune memory use
 
+To save video memory, start with **Properties > Game > Ocarina of Time local shadow size**.
+It controls shadows for nearby objects in towns. Compared with **Full**, **Half** saves about
+216 MiB for the shadow map and **Quarter** saves about 270 MiB. Shadows looked nearly the same
+in Market tests. Restart the game to apply the change.
+
 | Setup | Render scale to try | Shader Pipeline Memory | Texture Memory Target |
 |---|---|---|---|
 | Limited system RAM and a slower GPU | Performance | Low | Auto |
