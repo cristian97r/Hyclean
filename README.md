@@ -16,108 +16,86 @@ included; use only what you legally own.
 
 ## Settings for the best speed (Ocarina of Time)
 
-Open **Emulation > Configure** (or press Ctrl+,), then **Graphics**. Each step names the tab.
+In the game list, right-click Ocarina of Time and open **Properties**. The **Game** tab has the
+game's render scale and anti-aliasing controls. Use **Graphics** in Properties for per-game
+graphics settings, or **Emulation > Configure > Graphics** to change the defaults.
 
-**Graphics card with 4 GB (for example GTX 1050 Ti, GTX 1650, RX 570 4 GB)**
+### Start with render scale
 
-- Graphics: Resolution 1X.
-- Graphics: Ocarina of Time render scale: Ultra Performance (1280x720).
-- Graphics: Frame rate limit (Switch 2): 60.
-- Advanced: GPU Mode: Low.
-- Advanced: VRAM Usage: 2 GB.
-- Advanced: RAM Usage Mode: Low.
-- Advanced: ASTC Recompression Method: BC3.
-- Extras: Enable asynchronous shader compilation: on.
+On a slower graphics card, lower **Ocarina of Time render scale** first. It changes how large the
+game draws the scene when docked with the **Max Resolution** add-on enabled. Lower scales reduce
+GPU work but give a softer picture. Restart the game after changing it.
 
-Not yet tested on a real 4 GB card. On our test PC the game needed about 4 GB of video memory at
-1920x1080 even with the 2 GB setting, so a 4 GB card needs the smaller 1280x720 render scale. Close
-other programs that use the graphics card (browsers, video players) while you play.
+| Render scale | Size the game draws |
+|---|---|
+| Native (maximum) | 2560×1440 |
+| Balanced | 2276×1280 |
+| Performance | 1920×1080 |
+| Ultra Performance | 1280×720 |
 
-**16 GB of memory, or a graphics card with 6 to 8 GB**
+Start with **Resolution** at **1X**, **GPU Mode** at **Low**, and the Switch 2 frame rate limit
+at **60**. **GPU Mode: High** is slower, and Ocarina of Time does not need it. Try **Performance**
+if the game runs slowly, or **Ultra Performance** on a 4 GB card.
+For more than 60 fps, leave **FPS Unlock (built-in)** on under **Properties > Add-Ons** so the
+game does not speed up.
 
-- Graphics: Resolution 1X.
-- Graphics: Ocarina of Time render scale: Performance.
-- Graphics: Frame rate limit (Switch 2): 60.
-- Advanced: GPU Mode: Low.
-- Advanced: VRAM Usage: 4 GB.
-- Advanced: RAM Usage Mode: Low.
-- Advanced: ASTC Recompression Method: BC3.
-- Extras: Enable asynchronous shader compilation: on.
+### Pick an upscaler
 
-**In between**
+In **Graphics**, **Upscaler** offers **Native** (the game's own upscaler), **AMD FSR**, and
+**NVIDIA DLSS**. In Ocarina of Time, FSR and DLSS only apply at **Resolution: 1X**. This is the
+emulator's Resolution setting, not the game's render scale. DLSS can set its own render scale
+based on the selected DLSS quality mode.
 
-- Graphics: Resolution 1X.
-- Graphics: Ocarina of Time render scale: Balanced.
-- Graphics: Frame rate limit (Switch 2): 60.
-- Advanced: GPU Mode: Low.
-- Advanced: VRAM Usage: Auto.
-- Advanced: RAM Usage Mode: Auto.
-- Advanced: Build all cached shaders before game start: on.
-- Extras: Enable asynchronous shader compilation: on.
+On Linux, DLSS needs a GeForce RTX card, a driver with NVIDIA NGX support, and the separate
+[Lichii DLSS module](https://github.com/tasarren/lichii-dlss/releases). Select **NVIDIA DLSS** in
+**Graphics**, then use **Download**. Lichii shows NVIDIA's license before fetching the module
+and NVIDIA's DLSS files. If you already have the files, use **Install from file...** and select
+`lichii-dlss-module.so` with NVIDIA's DLSS model in the same folder. Once the panel says **Ready**,
+start the game again.
 
-**32 GB of memory and a graphics card with 12 GB or more**
+### Reduce first-visit freezes
 
-- Graphics: Resolution 1X.
-- Graphics: Ocarina of Time render scale: Native.
-- Graphics: Frame rate limit (Switch 2): 120.
-- Graphics: VSync Mode: FIFO (VSync).
-- Advanced: GPU Mode: Low.
-- Advanced: VRAM Usage: Auto.
-- Advanced: RAM Usage Mode: High.
-- Advanced: Build all cached shaders before game start: on.
+Keep **Enable asynchronous shader compilation** on. **Skip mesh draws that are still building**
+is on by default. It reduces pauses when you first visit an area or see a new effect. Some objects
+may briefly pop into view when their shaders finish building. If you prefer to wait, turn it off
+in **Graphics > Advanced** or for this game in **Properties > Adv. Graphics**.
 
-Above 60 the game plays too fast unless FPS Unlock is on. It is on by default. To check: in the game
-list, right-click Ocarina of Time, choose Properties, open the Add-Ons tab, and leave "FPS Unlock
-(built-in)" ticked.
+Keep **Build all cached shaders before game start** on for fewer pauses in places you have
+already visited, at the cost of a longer load. New scenes can still pause while shaders build.
+Leave **Precache shaders before game start** off. It guesses shader inputs and misses the slow
+shaders that cause these pauses.
 
-### What each choice changes
+### Tune memory use
 
-- **Resolution** is the emulator's own scaling. 1X uses the least video memory. Higher uses more.
-- **Ocarina of Time render scale** is the size the game itself draws at. Native is sharpest.
-  Performance is 1920x1080 and the smoothest.
-- **Frame rate limit (Switch 2)** is how often the game draws. 60 matches the original. Higher is
-  smoother, but only with FPS Unlock, or the game speeds up.
-- **VSync Mode** stops the picture tearing. FIFO (VSync) never tears. Mailbox can feel slightly
-  quicker but sometimes drops a frame.
-- **GPU Mode** Low runs faster. High is more accurate and slower; this game does not need it.
-- **VRAM Usage** is how much video memory the emulator keeps. Auto uses most of your card and leaves
-  some for everything else. 4 GB keeps the game inside a small card.
-- **RAM Usage Mode** is how many shaders stay loaded. High means no pop-in and more memory. Low uses
-  less memory; a place you revisit can flicker for a moment while its shaders reload.
-- **ASTC Recompression Method** BC3 stores textures in less video memory, and the picture loses a
-  little quality. Do not use BC1: it breaks textures in this game (dark faces, banding).
-- **Precache shaders before game start** builds compute shaders from the game files with guessed
-  inputs. Most of them are never used, and it misses the slow ones, so leave it Off.
-- **Build all cached shaders before game start** (on by default) builds every shader from your
-  earlier sessions while the game loads, so nothing you have seen before freezes again. After an
-  update the first boot takes longer (about 40 s on our PC) while they are rebuilt.
-- **Enable asynchronous shader compilation** lets the game keep running while a new shader builds,
-  instead of freezing.
+| Hardware | Render scale to try | RAM Usage Mode | VRAM Usage (texture target only) |
+|---|---|---|---|
+| 4 GB graphics card | Ultra Performance | Low | Auto |
+| 16 GB RAM or 6–8 GB graphics card | Performance | Low | Auto |
+| Mid-range setup | Balanced | Auto | Auto |
+| 32 GB RAM and 12 GB or more on the graphics card | Native | High | Auto |
 
-### If the game stutters
+These are starting points, not hardware requirements or guarantees. The 4 GB preset has not
+been verified on a 4 GB card. Lichii converts the game's ASTC textures for desktop graphics cards.
+Under **ASTC Recompression Method**, **BC3** saves video memory at a small cost to texture quality.
+**Uncompressed** uses the most video memory.
 
-- Keep Build all cached shaders before game start on.
-- The first time you ever visit a place or use an item, expect a short pause (up to about 0.7 s).
-  It happens once, also across updates.
+- **RAM Usage Mode** (in **System**) limits the shader pipelines and shader data Lichii keeps in
+  memory, not how much RAM the game uses. In warm Market runs at 1X and 720p render scale, **Low**
+  used about 900 MiB less RAM than **Auto**. Low can mean more shader rebuilds on return visits.
+- **VRAM Usage** sets a target for cached textures, not a cap on total video memory. Render
+  targets, buffers, and the driver still need memory. If a low target makes play less smooth,
+  try **Auto**.
 
-### If the game runs slow
+<!-- TODO: Add measured VRAM use at each render scale and update the table's VRAM targets if supported by those results. -->
+<!-- TODO: Sync RAM and VRAM labels once the UI rename lands. -->
 
-- Set Ocarina of Time render scale to Performance.
-- Set RAM Usage Mode to Low and VRAM Usage to 4 GB (2 GB on a 4 GB card).
-- Set the frame rate limit to 60.
-- Set GPU Mode to Low.
-
-### If the game crashes
-
-- Set VRAM Usage to Auto.
-- Update your graphics driver.
-- If it still crashes, use Help > Report a Bug and attach the file it makes to an
-  [issue](https://github.com/tasarren/Lichii/issues).
+If the game crashes, try **VRAM Usage: Auto** and update your graphics driver. If it still
+crashes, see [Reporting a problem](#reporting-a-problem).
 
 ## Copy-paste configuration
 
-The same settings as config file lines, if you prefer to edit the file. Close Lichii first. All keys
-go in the `[Renderer]` section of `qt-config.ini`:
+Example presets if you prefer to edit the config file. Close Lichii first. All keys go in the
+`[Renderer]` section of `qt-config.ini`:
 
 - Windows: `%APPDATA%\lichii\config\qt-config.ini`
 - Linux: `~/.config/lichii/qt-config.ini`
@@ -138,7 +116,7 @@ nx2_frame_rate_limit=60
 gpu_accuracy\default=false
 gpu_accuracy=0
 vram_usage_mode\default=false
-vram_usage_mode=2
+vram_usage_mode=0
 ram_usage_mode\default=false
 ram_usage_mode=3
 astc_recompression\default=false
@@ -160,7 +138,7 @@ nx2_frame_rate_limit=60
 gpu_accuracy\default=false
 gpu_accuracy=0
 vram_usage_mode\default=false
-vram_usage_mode=3
+vram_usage_mode=0
 ram_usage_mode\default=false
 ram_usage_mode=3
 astc_recompression\default=false
@@ -215,7 +193,7 @@ build_all_cached_shaders=true
 
 Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
 `use_vsync` 2 = FIFO. `gpu_accuracy` 0 Low, 1 High. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
-3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3 (avoid 1 = BC1).
+3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3.
 
 Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
 Time: `custom/0400486024DEC000.ini`). There a key also needs `\use_global=false`; the game's
