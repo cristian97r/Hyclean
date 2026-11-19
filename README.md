@@ -24,7 +24,9 @@ graphics settings, or **Emulation > Configure > Graphics** to change the default
 
 On a slower graphics card, lower **Ocarina of Time render scale** first. It changes how large the
 game draws the scene when docked with the **Max Resolution** add-on enabled. Lower scales reduce
-GPU work but give a softer picture. Restart the game after changing it.
+GPU work but give a softer picture. The game keeps the same render targets. At **1X**, lowering
+this setting did not meaningfully reduce RAM or video memory in our tests. Restart the game after
+changing it.
 
 | Render scale | Size the game draws |
 |---|---|
@@ -33,9 +35,9 @@ GPU work but give a softer picture. Restart the game after changing it.
 | Performance | 1920×1080 |
 | Ultra Performance | 1280×720 |
 
-Start with **Resolution** at **1X**, **GPU Mode** at **Low**, and the Switch 2 frame rate limit
-at **60**. **GPU Mode: High** is slower, and Ocarina of Time does not need it. Try **Performance**
-if the game runs slowly, or **Ultra Performance** on a 4 GB card.
+Start with **Resolution** at **1X**, **GPU Mode** at **Fast**, and the Switch 2 frame rate limit
+at **60**. **GPU Mode: Accurate** is slower, and Ocarina of Time does not need it. Try the
+**Performance** render scale if your GPU struggles, then **Ultra Performance** if needed.
 For more than 60 fps, leave **FPS Unlock (built-in)** on under **Properties > Add-Ons** so the
 game does not speed up.
 
@@ -67,29 +69,26 @@ shaders that cause these pauses.
 
 ### Tune memory use
 
-| Hardware | Render scale to try | RAM Usage Mode | VRAM Usage (texture target only) |
+| Setup | Render scale to try | Shader Pipeline Memory | Texture Memory Target |
 |---|---|---|---|
-| 4 GB graphics card | Ultra Performance | Low | Auto |
-| 16 GB RAM or 6–8 GB graphics card | Performance | Low | Auto |
+| Limited system RAM and a slower GPU | Performance | Low | Auto |
 | Mid-range setup | Balanced | Auto | Auto |
 | 32 GB RAM and 12 GB or more on the graphics card | Native | High | Auto |
 
-These are starting points, not hardware requirements or guarantees. The 4 GB preset has not
-been verified on a 4 GB card. Lichii converts the game's ASTC textures for desktop graphics cards.
-Under **ASTC Recompression Method**, **BC3** saves video memory at a small cost to texture quality.
-**Uncompressed** uses the most video memory.
+These are starting points, not hardware requirements or guarantees. Lichii converts the game's
+ASTC textures for desktop graphics cards. Under **ASTC Recompression Method**, **BC3** saves video
+memory at a small cost to texture quality. **Uncompressed** uses the most video memory.
 
-- **RAM Usage Mode** (in **System**) limits the shader pipelines and shader data Lichii keeps in
-  memory, not how much RAM the game uses. In warm Market runs at 1X and 720p render scale, **Low**
+- **Shader Pipeline Memory** (in **System**) limits the shader pipelines and shader data Lichii
+  keeps, not how much RAM the game uses. In warm Market runs at 1X and 720p render scale, **Low**
   used about 900 MiB less RAM than **Auto**. Low can mean more shader rebuilds on return visits.
-- **VRAM Usage** sets a target for cached textures, not a cap on total video memory. Render
-  targets, buffers, and the driver still need memory. If a low target makes play less smooth,
-  try **Auto**.
+- **Texture Memory Target** (in **Graphics > Advanced**) applies only to cached textures. Render
+  targets, buffers, and the driver still need memory. In Market tests at **1X**, total video memory
+  use was about 4.5–5.2 GiB, with about 4.5 GiB even at the 2 GB and 4 GB targets. Neither a low
+  target nor a lower render scale guarantees the game will fit on a 4 GB card. If a low target
+  makes play less smooth, try **Auto**.
 
-<!-- TODO: Add measured VRAM use at each render scale and update the table's VRAM targets if supported by those results. -->
-<!-- TODO: Sync RAM and VRAM labels once the UI rename lands. -->
-
-If the game crashes, try **VRAM Usage: Auto** and update your graphics driver. If it still
+If the game crashes, try **Texture Memory Target: Auto** and update your graphics driver. If it still
 crashes, see [Reporting a problem](#reporting-a-problem).
 
 ## Copy-paste configuration
@@ -103,29 +102,7 @@ Example presets if you prefer to edit the config file. Close Lichii first. All k
 If a key is already there, change its lines instead of adding a second copy. Each setting needs its
 `\default=false` line, or Lichii ignores the value.
 
-**4 GB graphics card**
-
-```ini
-[Renderer]
-resolution_setup\default=false
-resolution_setup=3
-ocarina_render_scale\default=false
-ocarina_render_scale=3
-nx2_frame_rate_limit\default=false
-nx2_frame_rate_limit=60
-gpu_accuracy\default=false
-gpu_accuracy=0
-vram_usage_mode\default=false
-vram_usage_mode=0
-ram_usage_mode\default=false
-ram_usage_mode=3
-astc_recompression\default=false
-astc_recompression=2
-use_asynchronous_shaders\default=false
-use_asynchronous_shaders=true
-```
-
-**Low (16 GB memory or 6 to 8 GB graphics card)**
+**Low (limited system RAM and a slower GPU)**
 
 ```ini
 [Renderer]
@@ -192,7 +169,7 @@ build_all_cached_shaders=true
 ```
 
 Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
-`use_vsync` 2 = FIFO. `gpu_accuracy` 0 Low, 1 High. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
+`use_vsync` 2 = FIFO. `gpu_accuracy` 0 Fast, 1 Accurate. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
 3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3.
 
 Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
