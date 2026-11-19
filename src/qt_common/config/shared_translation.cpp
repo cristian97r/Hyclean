@@ -302,7 +302,7 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
            tr("How much video memory textures may use. Textures past it are freed and loaded "
               "again when needed.\nRender targets, buffers and the GPU driver are not counted, "
               "so total video memory stays above it: Ocarina of Time needs about 4.5 GB at 1X "
-              "with DLSS Ultra Performance whatever the target.\nAuto: 70% of what the GPU "
+              "whatever the target or render scale.\nAuto: 70% of what the GPU "
               "driver allows, leaving room for other programs.\nUnlimited: up to what the "
               "driver allows.\nA target below what a game's scenes need costs performance."));
     INSERT(Settings, ram_usage_mode, tr("Shader Pipeline Memory:"),
