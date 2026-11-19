@@ -21,6 +21,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
@@ -458,7 +459,13 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
     QHBoxLayout* button_row = new QHBoxLayout;
     button_row->setContentsMargins(24, 0, 0, 0);
     download_button = new QPushButton(this);
+#ifdef _WIN32
     folder_button = new QPushButton(Tr("Open Folder"), this);
+#else
+    folder_button = new QPushButton(Tr("Install from file..."), this);
+    folder_button->setToolTip(Tr("Pick a lichii-dlss-module.so you downloaded. NVIDIA's DLSS model "
+                                 "(libnvidia-ngx-dlss.so.*) has to be in the same folder."));
+#endif
     QLabel* about = new QLabel(
         QStringLiteral("<a href=\"%1\">%2</a>").arg(QString::fromLatin1(
 #ifdef _WIN32
@@ -479,27 +486,33 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
     button_row->addWidget(download_button);
     button_row->addWidget(folder_button);
     button_row->addStretch(1);
+#ifndef _WIN32
+    QLabel* open_folder =
+        new QLabel(QStringLiteral("<a href=\"#\">%1</a>").arg(Tr("Open folder")), this);
+    button_row->addWidget(open_folder);
+#endif
     button_row->addWidget(about);
 
     layout->addLayout(status_row);
     layout->addLayout(button_row);
 
     connect(download_button, &QPushButton::clicked, this, [this] { Download(); });
-    connect(folder_button, &QPushButton::clicked, this, [] {
 #ifdef _WIN32
+    connect(folder_button, &QPushButton::clicked, this, [] {
         const std::filesystem::path folder = Streamline::FindDlssFiles().folder;
-#else
-        const std::filesystem::path folder = Folder();
-#endif
         std::error_code ec;
         std::filesystem::create_directories(folder, ec);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(
-#ifdef _WIN32
-            PathText(folder)));
-#else
-            QString::fromStdString(folder.string())));
-#endif
+        QDesktopServices::openUrl(QUrl::fromLocalFile(PathText(folder)));
     });
+#else
+    connect(folder_button, &QPushButton::clicked, this, [this] { InstallFromFile(); });
+    connect(open_folder, &QLabel::linkActivated, this, [] {
+        const std::filesystem::path folder = Folder();
+        std::error_code ec;
+        std::filesystem::create_directories(folder, ec);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder.string())));
+    });
+#endif
     Refresh();
 }
 
@@ -1066,5 +1079,63 @@ void NvidiaDlssPanel::Download() {
                              Tr("NVIDIA DLSS is ready. It is used the next time a game starts."));
 #endif
 }
+
+#ifndef _WIN32
+void NvidiaDlssPanel::InstallFromFile() {
+    const QString picked = QFileDialog::getOpenFileName(
+        this, Tr("Install Lichii's DLSS module"), QString{},
+        QStringLiteral("lichii-dlss-module.so (lichii-dlss-module.so)"));
+    if (picked.isEmpty()) {
+        return;
+    }
+    const std::filesystem::path source = std::filesystem::path{picked.toStdString()}.parent_path();
+    const std::filesystem::path folder = Folder();
+    std::error_code ec;
+    std::vector<std::string> names;
+    for (const auto& entry : std::filesystem::directory_iterator(source, ec)) {
+        names.push_back(entry.path().filename().string());
+    }
+    const auto files = VideoCommon::DlssInstallFiles(names);
+    if (!files) {
+        QMessageBox::warning(this, Tr("NVIDIA DLSS"),
+                             Tr("%1 needs NVIDIA's DLSS model (libnvidia-ngx-dlss.so.*) in the "
+                                "same folder.")
+                                 .arg(picked));
+        return;
+    }
+    // Each file lands under a temporary name first, so a failed copy never leaves half a file.
+    std::filesystem::create_directories(folder, ec);
+    for (const std::string& name : *files) {
+        const std::filesystem::path target = folder / name;
+        std::filesystem::path part = target;
+        part += ".part";
+        std::filesystem::copy_file(source / name, part,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec) {
+            std::filesystem::rename(part, target, ec);
+        }
+        if (ec) {
+            std::filesystem::remove(part, ec);
+            LOG_ERROR(Frontend, "NVIDIA DLSS install failed for {}", name);
+            QMessageBox::warning(this, Tr("NVIDIA DLSS"),
+                                 Tr("Could not copy %1 into %2.")
+                                     .arg(QString::fromStdString(name),
+                                          QString::fromStdString(folder.string())));
+            Refresh();
+            return;
+        }
+        LOG_INFO(Frontend, "Installed {}", Common::FS::PathToUTF8String(target));
+    }
+    Refresh();
+    const Vulkan::Ngx::State state = Vulkan::Ngx::Probe();
+    if (state.setup == Vulkan::Ngx::Setup::Ready) {
+        QMessageBox::information(this, Tr("NVIDIA DLSS"),
+                                 Tr("NVIDIA DLSS is ready. It is used the next time a game starts."));
+    } else {
+        QMessageBox::warning(this, Tr("NVIDIA DLSS"),
+                             Tr("The files were copied, but DLSS is not ready: see the panel."));
+    }
+}
+#endif
 
 #endif

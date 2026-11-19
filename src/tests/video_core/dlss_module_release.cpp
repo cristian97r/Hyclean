@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "video_core/dlss_module_release.h"
 
+using VideoCommon::DlssInstallFiles;
 using VideoCommon::ParseSha256Line;
 using VideoCommon::PickDlssModuleRelease;
 
@@ -43,4 +44,17 @@ TEST_CASE("The DLSS module sum is read from a sha256sum line", "[dlss_module_rel
     CHECK_FALSE(ParseSha256Line(std::string(63, 'a')));
     CHECK_FALSE(ParseSha256Line(std::string(63, 'a') + "g  x"));
     CHECK_FALSE(ParseSha256Line(std::string(65, 'a')));
+}
+
+TEST_CASE("Install from file takes the module, its runtimes and the licences",
+          "[dlss_module_release]") {
+    const auto files = DlssInstallFiles({"lichii-dlss-module.so", "libnvidia-ngx-dlss.so.310.9.16",
+                                         "NVIDIA-LICENSE.txt", "LICENSE", "notes.txt",
+                                         "lichii-dlss-module.so.sha256"});
+    REQUIRE(files);
+    CHECK(*files == std::vector<std::string>{"lichii-dlss-module.so",
+                                             "libnvidia-ngx-dlss.so.310.9.16",
+                                             "NVIDIA-LICENSE.txt", "LICENSE"});
+    CHECK_FALSE(DlssInstallFiles({"lichii-dlss-module.so", "LICENSE"}));
+    CHECK_FALSE(DlssInstallFiles({"libnvidia-ngx-dlss.so.310.9.16"}));
 }

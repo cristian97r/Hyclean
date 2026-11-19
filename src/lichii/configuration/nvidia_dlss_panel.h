@@ -29,6 +29,9 @@ protected:
 
 private:
     void Download();
+#ifndef _WIN32
+    void InstallFromFile();
+#endif
 
     QLabel* icon_label;
     QLabel* status_label;

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -59,6 +60,29 @@ inline std::optional<std::string> ParseSha256Line(std::string_view text) {
     std::ranges::transform(hex, hex.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return hex;
+}
+
+// The files "Install from file" copies from the module's folder: the module, every DLSS model
+// runtime and the licences. Nothing when the module or a runtime is missing.
+inline std::optional<std::vector<std::string>> DlssInstallFiles(
+    const std::vector<std::string>& names) {
+    std::vector<std::string> files;
+    bool module = false;
+    bool runtime = false;
+    for (const std::string& name : names) {
+        if (name == "lichii-dlss-module.so") {
+            module = true;
+        } else if (name.starts_with("libnvidia-ngx-dlss.so.")) {
+            runtime = true;
+        } else if (name != "LICENSE" && name != "NVIDIA-LICENSE.txt") {
+            continue;
+        }
+        files.push_back(name);
+    }
+    if (!module || !runtime) {
+        return std::nullopt;
+    }
+    return files;
 }
 
 } // namespace VideoCommon

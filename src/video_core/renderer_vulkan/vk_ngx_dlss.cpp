@@ -220,15 +220,36 @@ std::string ModuleDir() {
     return ModuleDirImpl();
 }
 
+static State ProbeFiles();
+
+/// A failed init that files put in place later can fix, without a restart.
+static bool FailedOnFiles() {
+    return init_attempted && !ngx_inited &&
+           (init_setup == Setup::NotInstalled || init_setup == Setup::WrongAbi);
+}
+
 State Probe() {
     std::scoped_lock lock{mutex};
     State state;
-    if (init_attempted || ngx_inited) {
+    if (ngx_inited || (init_attempted && !FailedOnFiles())) {
         FillVersions(state);
         state.setup = init_setup;
         state.detail = init_detail;
         return state;
     }
+    State probed = ProbeFiles();
+    // Unless NGX runs on it, the module is not kept loaded: the next probe then reads the file
+    // the panel or the user put there since.
+    if (module_loaded && !ngx_inited) {
+        dlclose(module.library);
+        module = Module{};
+        module_loaded = false;
+    }
+    return probed;
+}
+
+static State ProbeFiles() {
+    State state;
     std::string detail;
     switch (LoadModule(detail)) {
     case LoadResult::Ok:
@@ -270,7 +291,7 @@ bool EnsureInit(const Device& device) {
     if (ngx_inited) {
         return true;
     }
-    if (init_attempted) {
+    if (init_attempted && !FailedOnFiles()) {
         return false; // already tried for this device
     }
     attempted_device = *device.GetLogical();
