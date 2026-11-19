@@ -23,10 +23,10 @@ graphics settings, or **Emulation > Configure > Graphics** to change the default
 ### Start with render scale
 
 On a slower graphics card, lower **Ocarina of Time render scale** first. It changes how large the
-game draws the scene when docked with the **Max Resolution** add-on enabled. Lower scales reduce
-GPU work but give a softer picture. The game keeps the same render targets. At **1X**, lowering
-this setting did not meaningfully reduce RAM or video memory in our tests. Restart the game after
-changing it.
+game draws the scene when docked with the **Max Resolution** add-on enabled. Lower scales give a
+softer picture and can raise frame rate when the GPU, not the CPU, is the limit. In one Market
+test at **1X**, **Ultra Performance** used about 250 MiB less video memory than **Native**.
+Restart the game after changing this setting.
 
 | Render scale | Size the game draws |
 |---|---|
