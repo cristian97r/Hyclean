@@ -259,7 +259,7 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "emulator's resolution scaling. Native keeps 2560x1440; Performance is 1920x1080. "
               "Independent of NVIDIA DLSS, which overrides this when it applies its own render "
               "scale.\nTakes effect when the game starts."));
-    INSERT(Settings, ocarina_local_shadow_size, tr("Local shadow size"),
+    INSERT(Settings, ocarina_local_shadow_size, tr("Ocarina of Time local shadow size:"),
            tr("Size of the shadow map for nearby objects in towns. Half saves about 216 MB of "
               "video memory, Quarter about 270 MB. Shadows look nearly the same. Restart the game "
               "to apply."));
