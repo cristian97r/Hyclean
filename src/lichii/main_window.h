@@ -512,6 +512,7 @@ private:
     void UpdateUpscalerButton(VideoCore::Upscaler running);
     /// Turns on the chosen upscaler's setting and the others off, as the settings page does.
     void ChooseUpscaler(VideoCore::UpscalerChoice choice);
+    void FillUpscalerMenu(QMenu& menu);
     void UpdateVolumeUI();
     void UpdateStatusBar();
     void UpdateGPUAccuracyButton();

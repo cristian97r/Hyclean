@@ -1351,40 +1351,8 @@ void MainWindow::InitializeWidgets() {
     upscaler_status_button->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(upscaler_status_button, &QPushButton::customContextMenuRequested,
             [this](const QPoint& menu_location) {
-                using enum VideoCore::UpscalerChoice;
                 QMenu context_menu;
-                QMenu* const upscaler = context_menu.addMenu(tr("Upscaler"));
-                upscaler->addAction(tr("Native"), [this] { ChooseUpscaler(Native); });
-                if (DlssInstalled()) {
-                    upscaler->addAction(tr("NVIDIA DLSS"), [this] { ChooseUpscaler(Dlss); });
-                }
-                upscaler->addAction(tr("AMD FSR"), [this] { ChooseUpscaler(Fsr); });
-
-                QMenu* const quality = context_menu.addMenu(tr("DLSS quality"));
-                for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
-                    const QString label = ConfigurationShared::TranslateMapText(translator, text);
-                    QAction* const action = quality->addAction(label, [this, mode] {
-                        Settings::values.nvidia_dlss_quality.SetValue(mode);
-                        Settings::RefreshNvidiaDlssRuntimeSettings();
-                    });
-                    action->setCheckable(true);
-                    action->setChecked(Settings::values.nvidia_dlss_quality.GetValue() == mode);
-                }
-                QMenu* const preset = context_menu.addMenu(tr("DLSS preset"));
-                for (const auto& [value, text] : ConfigurationShared::nvidia_dlss_preset_texts_map) {
-                    QAction* const action = preset->addAction(
-                        ConfigurationShared::TranslateMapText(translator, text), [this, value] {
-                            Settings::values.nvidia_dlss_preset.SetValue(value);
-                            Settings::RefreshNvidiaDlssRuntimeSettings();
-                        });
-                    action->setCheckable(true);
-                    action->setChecked(Settings::values.nvidia_dlss_preset.GetValue() == value);
-                }
-                context_menu.addSeparator();
-                context_menu.addAction(tr("Configure Upscaler..."), [this] {
-                    configure_graphics_next = true;
-                    OnConfigure();
-                });
+                FillUpscalerMenu(context_menu);
                 context_menu.exec(upscaler_status_button->mapToGlobal(menu_location));
                 upscaler_status_button->repaint();
             });
@@ -4678,8 +4646,9 @@ void MainWindow::OnConfigurePerGame() {
 }
 
 // Specs: "configure:<page>[:<tab>]" (the selector list item and one of its tabs by title), and
-// "properties:<program id hex>[:<tab>]" (the game's properties, found in the game list). The
-// dialog is never accepted, so nothing is saved.
+// "properties:<program id hex>[:<tab>]" (the game's properties, found in the game list), and
+// "menu:upscaler" (the upscaler chip's right-click menu). The dialog is never accepted, so
+// nothing is saved.
 void MainWindow::RunUiShot(const QString& request) {
     // Exits at once: nothing was started that needs shutting down, and the normal teardown is
     // not made for a session that never showed its window.
@@ -4694,6 +4663,16 @@ void MainWindow::RunUiShot(const QString& request) {
         LOG_ERROR(Frontend, "LICHII_UI_SHOT: expected <spec>|<out.png>, got {}",
                   request.toStdString());
         return finish(2);
+    }
+    if (halves[0] == QStringLiteral("menu:upscaler")) {
+        QMenu menu;
+        FillUpscalerMenu(menu);
+        menu.popup(QPoint{});
+        QCoreApplication::processEvents();
+        const bool saved = menu.grab().save(out);
+        LOG_INFO(Frontend, "LICHII_UI_SHOT: menu:upscaler -> {} ({})", out.toStdString(),
+                 saved ? "saved" : "failed");
+        return finish(saved ? 0 : 1);
     }
     std::unique_ptr<QDialog> dialog;
     QTabWidget* tabs = nullptr;
@@ -6122,6 +6101,46 @@ void MainWindow::UpdatePostShaderText() {
 }
 #endif
 
+// The upscaler chip's right-click menu. DLSS quality and preset show only while DLSS is chosen.
+void MainWindow::FillUpscalerMenu(QMenu& menu) {
+    using enum VideoCore::UpscalerChoice;
+    QMenu* const upscaler = menu.addMenu(tr("Upscaler"));
+    upscaler->addAction(tr("Native"), [this] { ChooseUpscaler(Native); });
+    if (DlssInstalled()) {
+        upscaler->addAction(tr("NVIDIA DLSS"), [this] { ChooseUpscaler(Dlss); });
+    }
+    upscaler->addAction(tr("AMD FSR"), [this] { ChooseUpscaler(Fsr); });
+
+    if (VideoCore::ChosenUpscaler(Settings::values.nvidia_dlss.GetValue(),
+                                  Settings::values.ocarina_fsr.GetValue()) == Dlss) {
+        QMenu* const quality = menu.addMenu(tr("DLSS quality"));
+        for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
+            const QString label = ConfigurationShared::TranslateMapText(translator, text);
+            QAction* const action = quality->addAction(label, [this, mode] {
+                Settings::values.nvidia_dlss_quality.SetValue(mode);
+                Settings::RefreshNvidiaDlssRuntimeSettings();
+            });
+            action->setCheckable(true);
+            action->setChecked(Settings::values.nvidia_dlss_quality.GetValue() == mode);
+        }
+        QMenu* const preset = menu.addMenu(tr("DLSS preset"));
+        for (const auto& [value, text] : ConfigurationShared::nvidia_dlss_preset_texts_map) {
+            QAction* const action = preset->addAction(
+                ConfigurationShared::TranslateMapText(translator, text), [this, value] {
+                    Settings::values.nvidia_dlss_preset.SetValue(value);
+                    Settings::RefreshNvidiaDlssRuntimeSettings();
+                });
+            action->setCheckable(true);
+            action->setChecked(Settings::values.nvidia_dlss_preset.GetValue() == value);
+        }
+    }
+    menu.addSeparator();
+    menu.addAction(tr("Configure Upscaler..."), [this] {
+        configure_graphics_next = true;
+        OnConfigure();
+    });
+}
+
 void MainWindow::ChooseUpscaler(VideoCore::UpscalerChoice choice) {
     using enum VideoCore::UpscalerChoice;
     Settings::values.nvidia_dlss.SetValue(choice == Dlss);
@@ -6169,8 +6188,7 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
                                                *scale)));
         }
         upscaler_status_button->setToolTip(
-            tooltip + tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and "
-                         "preset."));
+            tooltip + tr("<br>Click: DLSS, FSR, native. Right-click: upscaler."));
         upscaler_status_button->setChecked(false);
         upscaler_status_button->setVisible(emulation_running);
         return;
@@ -6227,8 +6245,10 @@ void MainWindow::UpdateUpscalerButton(VideoCore::Upscaler running) {
         Settings::OcarinaRenderScaleAtNextStart() != Settings::AppliedOcarinaRenderScale()) {
         tooltip += tr("<br>The render scale for this quality applies at the game's next start.");
     }
-    tooltip +=
-        tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and preset.");
+    tooltip += dlss_chosen
+                   ? tr("<br>Click: DLSS, FSR, native. Right-click: upscaler, DLSS quality and "
+                        "preset.")
+                   : tr("<br>Click: DLSS, FSR, native. Right-click: upscaler.");
     upscaler_status_button->setText(badge);
     upscaler_status_button->setToolTip(tooltip);
     upscaler_status_button->setChecked(true);
