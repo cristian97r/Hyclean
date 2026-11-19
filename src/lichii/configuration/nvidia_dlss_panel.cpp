@@ -38,6 +38,7 @@
 #else
 #include <openssl/sha.h>
 
+#include "video_core/dlss_module_release.h"
 #include "video_core/renderer_vulkan/vk_ngx_dlss.h"
 #endif
 #include "common/common_types.h"
@@ -318,9 +319,9 @@ QString PathText(const std::filesystem::path& path) {
     return QString::fromStdWString(path.wstring());
 }
 #else
-// Everything comes from pinned sources with checked SHA-256 sums: the module
-// (Lichii's MIT code) from its release, NVIDIA's DLSS model runtime and licence
-// from NVIDIA's DLSS-tos repository at a pinned commit.
+// Every file has its SHA-256 checked: the module (Lichii's MIT code) against
+// the .sha256 of its latest release, NVIDIA's DLSS model runtime and licence
+// against sums pinned here, from NVIDIA's DLSS repository at a pinned commit.
 constexpr const char* NGX_COMMIT = "9981c6350dc58c0ce21f024fd65e31e851c31689";
 constexpr const char* RUNTIME_NAME = "libnvidia-ngx-dlss.so.310.9.16";
 constexpr const char* RUNTIME_SHA256 =
@@ -329,21 +330,20 @@ constexpr const char* LICENSE_SHA256 =
     "d4216e39ebef5f9b50a6712ebb37beeb5379862a67733a9999c651f21592aaf0";
 constexpr const char* MODULE_NAME = "lichii-dlss-module.so";
 constexpr const char* MODULE_RELEASE_PAGE = "https://github.com/tasarren/lichii-dlss/releases";
-// TODO(tasarren/lichii-dlss): pin the module's release address once the repository
-// publishes it; until then the placeholder fails the download with its own message.
-constexpr const char* MODULE_URL =
-    "https://github.com/tasarren/lichii-dlss/releases/download/v1.0.0/lichii-dlss-module.so";
-constexpr const char* MODULE_SHA256 = "";
+constexpr const char* MODULE_LATEST_RELEASE =
+    "https://api.github.com/repos/tasarren/lichii-dlss/releases/latest";
 
 struct Downloadable {
     std::string url;
-    std::string_view sha256;
+    std::string sha256;
     std::filesystem::path target;
 };
 
-std::vector<Downloadable> WantedFiles(const std::filesystem::path& folder) {
+std::vector<Downloadable> WantedFiles(const std::filesystem::path& folder,
+                                      const std::string& module_url,
+                                      const std::string& module_sha256) {
     return {
-        {MODULE_URL, MODULE_SHA256, folder / MODULE_NAME},
+        {module_url, module_sha256, folder / MODULE_NAME},
         {fmt::format("https://raw.githubusercontent.com/NVIDIA/DLSS/{}/lib/Linux_x86_64/rel/{}",
                      NGX_COMMIT, RUNTIME_NAME),
          RUNTIME_SHA256, folder / RUNTIME_NAME},
@@ -365,8 +365,9 @@ bool Sha256Matches(const std::string& data, std::string_view expected) {
 }
 
 /// One GET saved whole into data, with the SHA-256 checked by the caller.
+/// Sets status to the HTTP status, or 0 when no reply came.
 bool FetchFile(const std::string& url, const std::function<bool(u64)>& progress,
-               std::string& error, std::string& data) {
+               std::string& error, std::string& data, int* status = nullptr) {
     const size_t scheme = url.find("://");
     const size_t host_end = scheme == std::string::npos ? 0 : url.find('/', scheme + 3);
     if (scheme == std::string::npos || host_end == std::string::npos) {
@@ -379,17 +380,55 @@ bool FetchFile(const std::string& url, const std::function<bool(u64)>& progress,
     client.set_follow_location(true);
     Common::Net::ConfigureCaStore(client);
     data.clear();
-    const auto result = client.Get(url.substr(host_end),
+    // GitHub's API refuses requests without a User-Agent.
+    const httplib::Headers headers{{"User-Agent", "Lichii"}};
+    const auto result = client.Get(url.substr(host_end), headers,
                                    [&](const char* part, size_t length) {
                                        data.append(part, length);
                                        return !progress || progress(data.size());
                                    });
+    if (status) {
+        *status = result ? result->status : 0;
+    }
     if (!result || result->status != 200) {
         error = result ? fmt::format("HTTP {}", result->status)
                        : httplib::to_string(result.error());
         return false;
     }
     return true;
+}
+
+/// The module's address and sum from its latest release, or the reason for the panel.
+std::optional<std::pair<std::string, std::string>> LatestModule(std::string& error) {
+    std::string reply;
+    int status = 0;
+    if (!FetchFile(MODULE_LATEST_RELEASE, {}, error, reply, &status)) {
+        // A private or empty repository answers 404 too.
+        if (status == 404) {
+            error = "Lichii's DLSS module release is not available yet";
+        } else if (status == 403 || status == 429) {
+            error = "GitHub's download limit is reached; try again in an hour";
+        } else if (status == 0) {
+            error = "no network connection (" + error + ")";
+        }
+        return std::nullopt;
+    }
+    const auto release = VideoCommon::PickDlssModuleRelease(reply);
+    if (!release) {
+        error = "Lichii's DLSS module release is not available yet";
+        return std::nullopt;
+    }
+    std::string sum_text;
+    if (!FetchFile(release->sha256_url, {}, error, sum_text)) {
+        return std::nullopt;
+    }
+    const auto sum = VideoCommon::ParseSha256Line(sum_text);
+    if (!sum) {
+        error = "the module release has a broken .sha256 file";
+        return std::nullopt;
+    }
+    LOG_INFO(Frontend, "Lichii DLSS module release {}", release->tag);
+    return std::pair{release->module_url, *sum};
 }
 
 std::filesystem::path Folder() {
@@ -879,12 +918,7 @@ void NvidiaDlssPanel::Download() {
                                  .arg(QString::fromStdString(error)));
         Refresh();
     };
-    if (std::string_view{MODULE_SHA256}.empty()) {
-        fail("Lichii's DLSS module release is not available yet");
-        return;
-    }
     const std::filesystem::path folder = Folder();
-    const std::vector<Downloadable> wanted = WantedFiles(folder);
 
     // NVIDIA's licence first: nothing is fetched before it is accepted.
     QProgressDialog busy(Tr("Contacting the download..."), QString{}, 0, 0, this);
@@ -893,6 +927,14 @@ void NvidiaDlssPanel::Download() {
     busy.setMinimumDuration(0);
     busy.show();
     QApplication::processEvents();
+    std::string error;
+    const auto module = LatestModule(error);
+    if (!module) {
+        busy.close();
+        fail(error);
+        return;
+    }
+    const std::vector<Downloadable> wanted = WantedFiles(folder, module->first, module->second);
     const Downloadable* licence_file = nullptr;
     for (const Downloadable& file : wanted) {
         if (file.target.filename() == "NVIDIA-LICENSE.txt") {
@@ -900,7 +942,6 @@ void NvidiaDlssPanel::Download() {
         }
     }
     std::string licence;
-    std::string error;
     if (!licence_file || !FetchFile(licence_file->url, {}, error, licence) ||
         !Sha256Matches(licence, licence_file->sha256)) {
         busy.close();
@@ -1014,6 +1055,13 @@ void NvidiaDlssPanel::Download() {
     progress.setValue(1000);
     progress.close();
     Refresh();
+    // The release can be built for another ABI than this Lichii; the panel then says so.
+    if (Vulkan::Ngx::Probe().setup == Vulkan::Ngx::Setup::WrongAbi) {
+        QMessageBox::warning(this, Tr("NVIDIA DLSS"),
+                             Tr("The latest DLSS module is from another Lichii version. Until "
+                                "a matching one is released, games use AMD FSR 3.1."));
+        return;
+    }
     QMessageBox::information(this, Tr("NVIDIA DLSS"),
                              Tr("NVIDIA DLSS is ready. It is used the next time a game starts."));
 #endif

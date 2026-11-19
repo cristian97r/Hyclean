@@ -71,6 +71,7 @@ add_library(video_core STATIC
     ocarina_camera.h
     game_dlss_status.cpp
     game_dlss_status.h
+    dlss_module_release.h
     host1x/codecs/decoder.cpp
     host1x/codecs/decoder.h
     host1x/codecs/h264.cpp
