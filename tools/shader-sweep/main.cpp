@@ -741,6 +741,7 @@ Shader::Profile OfflineProfile(const Shader::HostTranslateInfo& host) {
         field("support_storage_texel_buffer_array_nonuniform_indexing",
               &P::support_storage_texel_buffer_array_nonuniform_indexing);
         field("select_global_memory_buffer", &P::select_global_memory_buffer);
+        field("route_single_candidates", &P::route_single_candidates);
         field("warp_size_potentially_larger_than_guest",
               &P::warp_size_potentially_larger_than_guest);
         field("need_gather_subpixel_offset", &P::need_gather_subpixel_offset);

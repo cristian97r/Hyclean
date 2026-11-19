@@ -78,6 +78,10 @@ struct Profile {
     /// branch chain (#619). AMD lowers the NonUniform access to a waterfall loop, which spills in
     /// vertex and mesh shaders that already use every register, so it keeps the chain.
     bool select_global_memory_buffer{};
+    /// With select_global_memory_buffer, accesses whose route has one candidate buffer keep that
+    /// route (a bounds check and one branch) instead of the select over every buffer: NVIDIA
+    /// builds them ~1.5x faster. Off for the #619 programs, whose single-buffer routes hang it.
+    bool route_single_candidates{};
 
     bool warp_size_potentially_larger_than_guest{};
 
