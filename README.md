@@ -16,170 +16,106 @@ included; use only what you legally own.
 
 ## Settings for the best speed (Ocarina of Time)
 
-In the game list, right-click Ocarina of Time and open **Properties**. The **Game** tab has the
-game's render scale and anti-aliasing controls. Use **Graphics** in Properties for per-game
-graphics settings, or **Emulation > Configure > Graphics** to change the defaults.
+### Pick your PC
 
-### Start with render scale
+Start with the column closest to your setup:
 
-On a slower graphics card, lower **Ocarina of Time render scale** first. It changes how large the
-game draws the scene when docked with the **Max Resolution** add-on enabled. Lower scales give a
-softer picture and can raise frame rate when the GPU, not the CPU, is the limit. In one Market
-test at **1X**, **Ultra Performance** used about 250 MiB less video memory than **Native**.
-Restart the game after changing this setting.
+- **Low-end:** A 4 GB graphics card (such as a GTX 1650) and 16 GB RAM, or a Steam Deck.
+- **Mid-range:** A 6–8 GB graphics card and 16–32 GB RAM.
+- **High-end:** A graphics card with 12 GB or more and at least 32 GB RAM.
 
-| Render scale | Size the game draws |
-|---|---|
-| Native (maximum) | 2560×1440 |
-| Balanced | 2276×1280 |
-| Performance | 1920×1080 |
-| Ultra Performance | 1280×720 |
-
-Start with **Resolution** at **1X**, **GPU Mode** at **Fast**, and the Switch 2 frame rate limit
-at **60**. **GPU Mode: Accurate** is slower, and Ocarina of Time does not need it. Try the
-**Performance** render scale if your GPU struggles, then **Ultra Performance** if needed.
-For more than 60 fps, leave **FPS Unlock (built-in)** on under **Properties > Add-Ons** so the
-game does not speed up.
-
-### Pick an upscaler
-
-In **Graphics**, **Upscaler** offers **Native** (the game's own upscaler), **AMD FSR**, and
-**NVIDIA DLSS**. In Ocarina of Time, FSR and DLSS only apply at **Resolution: 1X**. This is the
-emulator's Resolution setting, not the game's render scale. DLSS can set its own render scale
-based on the selected DLSS quality mode.
-
-On Linux, DLSS needs a GeForce RTX card, a driver with NVIDIA NGX support, and the separate
-[Lichii DLSS module](https://github.com/tasarren/lichii-dlss/releases). Select **NVIDIA DLSS** in
-**Graphics**, then use **Download**. Lichii shows NVIDIA's license before fetching the module
-and NVIDIA's DLSS files. If you already have the files, use **Install from file...** and select
-`lichii-dlss-module.so` with NVIDIA's DLSS model in the same folder. Once the panel says **Ready**,
-start the game again.
-
-### Reduce first-visit freezes
-
-Keep **Enable asynchronous shader compilation** on. **Skip mesh draws that are still building**
-is on by default. It reduces pauses when you first visit an area or see a new effect. Some objects
-may briefly pop into view when their shaders finish building. If you prefer to wait, turn it off
-in **Graphics > Advanced** or for this game in **Properties > Adv. Graphics**.
-
-Keep **Build all cached shaders before game start** on for fewer pauses in places you have
-already visited, at the cost of a longer load. New scenes can still pause while shaders build.
-Leave **Precache shaders before game start** off. It guesses shader inputs and misses the slow
-shaders that cause these pauses.
-
-### Tune memory use
-
-To save video memory, start with **Properties > Game > Ocarina of Time local shadow size**.
-It controls shadows for nearby objects in towns. Compared with **Full**, **Half** saves about
-216 MiB for the shadow map and **Quarter** saves about 270 MiB. Shadows looked nearly the same
-in Market tests. Restart the game to apply the change.
-
-| Setup | Render scale to try | Shader Pipeline Memory | Texture Memory Target |
+| Setting | Low-end | Mid-range | High-end |
 |---|---|---|---|
-| Limited system RAM and a slower GPU | Performance | Low | Auto |
-| Mid-range setup | Balanced | Auto | Auto |
-| 32 GB RAM and 12 GB or more on the graphics card | Native | High | Auto |
+| Shader Pipeline Memory | Low | Low with 16 GB RAM, otherwise Auto | Auto |
+| Texture Memory Target | 2 GB | Auto | Auto |
+| Ocarina of Time render scale | Performance (1080p) | Balanced (2276×1280) | Native (1440p) |
+| Ocarina of Time local shadow size | Quarter | Full, or Half to save memory | Full |
+| Upscaler | Native | Native, or try AMD FSR | NVIDIA DLSS on GeForce RTX, otherwise Native or AMD FSR |
 
-These are starting points, not hardware requirements or guarantees. Lichii converts the game's
-ASTC textures for desktop graphics cards. Under **ASTC Recompression Method**, **BC3** saves video
-memory at a small cost to texture quality. **Uncompressed** uses the most video memory.
+A 4 GB card can still run short on video memory with these settings. The Steam Deck shares memory
+between the game and graphics. Try the low-end settings there as a starting point, not a promise
+of smooth play.
 
-- **Shader Pipeline Memory** (in **System**) limits the shader pipelines and shader data Lichii
-  keeps, not how much RAM the game uses. In warm Market runs at 1X and 720p render scale, **Low**
-  used about 900 MiB less RAM than **Auto**. Low can mean more shader rebuilds on return visits.
-- **Texture Memory Target** (in **Graphics > Advanced**) applies only to cached textures. Render
-  targets, buffers, and the driver still need memory. In Market tests at **1X**, total video memory
-  use was about 4.5–5.2 GiB, with about 4.5 GiB even at the 2 GB and 4 GB targets. Neither a low
-  target nor a lower render scale guarantees the game will fit on a 4 GB card. If a low target
-  makes play less smooth, try **Auto**.
+On every PC, start with **Resolution: 1X**, **GPU Mode: Fast**, and **Frame rate limit (Switch 2):
+60 Hz**. Turn on **Enable asynchronous shader compilation** and leave **Skip mesh draws that are
+still building** on (the default).
 
-If the game crashes, try **Texture Memory Target: Auto** and update your graphics driver. If it still
-crashes, see [Reporting a problem](#reporting-a-problem).
+### Where to change the settings
 
-## Copy-paste configuration
+Stop the game, then right-click Ocarina of Time in the game list and open **Properties**. Changes
+there apply only to this game. Use **Emulation > Configure** if you want to change the defaults.
+The screenshots show where to look. The values shown are examples, not a preset.
 
-Example presets if you prefer to edit the config file. Close Lichii first. All keys go in the
-`[Renderer]` section of `qt-config.ini`:
+- **Game:** Set **Ocarina of Time render scale** and **Ocarina of Time local shadow size** here.
+  Render scale is how big the game draws the picture. To use it, set **System > Console Mode** to
+  **Docked** and enable **Max Resolution (built-in)** under **Add-Ons**. If your graphics card
+  struggles, try **Ultra Performance (720p)** next. The picture will be softer. **Half** and
+  **Quarter** use less video memory for shadows on nearby objects in towns. Restart the game after
+  changing scale or shadows.
 
-- Windows: `%APPDATA%\lichii\config\qt-config.ini`
-- Linux: `~/.config/lichii/qt-config.ini`
+  ![Ocarina of Time Properties: Game tab with render scale and local shadow size](docs/images/readme/oot-game.png)
 
-If a key is already there, change its lines instead of adding a second copy. Each setting needs its
-`\default=false` line, or Lichii ignores the value.
+- **Graphics:** Set **Resolution**, **Frame rate limit (Switch 2)** and **Upscaler** here. An upscaler
+  enlarges the picture. **Native** uses the game's own upscaler. In Ocarina of Time, **AMD FSR** and
+  **NVIDIA DLSS** only work at **Resolution: 1X**. DLSS quality can override the game's render scale.
+  If you raise the limit above 60 Hz, enable **FPS Unlock (built-in)** in **Add-Ons** so the game
+  does not run too fast.
 
-**Low (limited system RAM and a slower GPU)**
+  ![Main Graphics settings with Resolution at 1X and the Upscaler choice](docs/images/readme/graphics.png)
 
-```ini
-[Renderer]
-resolution_setup\default=false
-resolution_setup=3
-ocarina_render_scale\default=false
-ocarina_render_scale=2
-nx2_frame_rate_limit\default=false
-nx2_frame_rate_limit=60
-gpu_accuracy\default=false
-gpu_accuracy=0
-vram_usage_mode\default=false
-vram_usage_mode=0
-ram_usage_mode\default=false
-ram_usage_mode=3
-astc_recompression\default=false
-astc_recompression=2
-use_asynchronous_shaders\default=false
-use_asynchronous_shaders=true
-```
+- **System:** **Shader Pipeline Memory** controls how much work Lichii keeps ready to draw familiar
+  scenes. **Low** saves system memory (RAM). Revisiting an area may cause brief pauses or objects
+  to appear late while Lichii rebuilds what it needs.
 
-**Mid**
+  ![Main System settings with the Shader Pipeline Memory choice](docs/images/readme/system-memory.png)
 
-```ini
-[Renderer]
-resolution_setup\default=false
-resolution_setup=3
-ocarina_render_scale\default=false
-ocarina_render_scale=1
-nx2_frame_rate_limit\default=false
-nx2_frame_rate_limit=60
-gpu_accuracy\default=false
-gpu_accuracy=0
-vram_usage_mode\default=false
-vram_usage_mode=0
-ram_usage_mode\default=false
-ram_usage_mode=0
-build_all_cached_shaders\default=false
-build_all_cached_shaders=true
-use_asynchronous_shaders\default=false
-use_asynchronous_shaders=true
-```
+- **Adv. Graphics** (**Graphics > Advanced** in the main settings): Set **Texture Memory Target**,
+  **GPU Mode** and **Skip mesh draws that are still building** here. The texture target covers only
+  images kept for reuse, not all video memory. If a low target causes more pauses and your card has
+  room, try **Auto**. **GPU Mode: Accurate** is slower and is not needed for Ocarina of Time.
+  If you need more room, **ASTC Recompression Method: BC3** saves video memory at a small cost to
+  texture detail.
 
-**High (32 GB memory and 12 GB+ graphics card)**
+  ![Main Graphics Advanced settings with Texture Memory Target and mesh skipping](docs/images/readme/advanced.png)
 
-```ini
-[Renderer]
-resolution_setup\default=false
-resolution_setup=3
-ocarina_render_scale\default=false
-ocarina_render_scale=0
-nx2_frame_rate_limit\default=false
-nx2_frame_rate_limit=120
-use_vsync\default=false
-use_vsync=2
-gpu_accuracy\default=false
-gpu_accuracy=0
-vram_usage_mode\default=false
-vram_usage_mode=0
-ram_usage_mode\default=false
-ram_usage_mode=1
-build_all_cached_shaders\default=false
-build_all_cached_shaders=true
-```
+- **Ext. Graphics** (**Graphics > Extras** in the main settings): Turn on **Enable asynchronous
+  shader compilation**. This lets Lichii prepare some graphics work while you play.
 
-Values: `resolution_setup` 3 = 1X. `ocarina_render_scale` 0 Native, 1 Balanced, 2 Performance, 3 Ultra Performance.
-`use_vsync` 2 = FIFO. `gpu_accuracy` 0 Fast, 1 Accurate. `vram_usage_mode` 0 Auto, 1 Unlimited, 2 = 2 GB,
-3 = 4 GB, 4 = 8 GB. `ram_usage_mode` 0 Auto, 1 High, 2 Balanced, 3 Low. `astc_recompression` 2 = BC3.
+  ![Main Graphics Extras settings with asynchronous shader compilation enabled](docs/images/readme/async-shaders.png)
 
-Settings for one game only live in `custom/<title id>.ini` next to `qt-config.ini` (Ocarina of
-Time: `custom/0400486024DEC000.ini`). There a key also needs `\use_global=false`; the game's
-Properties window writes these for you.
+### What to expect when you play
+
+The first time you visit an area, the game can pause for a second or two while Lichii prepares
+shaders (the instructions that draw objects and effects). It usually plays more smoothly on later
+visits. **Skip mesh draws that are still building** can shorten some pauses, but objects may appear
+a moment late. Turn it off if you'd rather wait for them.
+
+In **Adv. Graphics**, keep **Build all cached shaders before game start** on for fewer pauses in
+familiar areas, at the cost of a longer load. Leave **Precache shaders before game start** off for
+Ocarina of Time. It misses the shaders that cause the longest waits.
+
+In tests with a 60-frame-per-second limit, both Build 3 and Build 4 held that rate in the Market
+and at Lake Hylia once shaders were ready. In one first-visit comparison across 15 areas, the
+longest pause dropped from 1.9 to 1.6 seconds, but Build 4 spent more time paused overall.
+
+In a separate Build 4 test in the Market at **1X**, Lichii used roughly **9.5 GB of RAM and 5 GB of
+video memory** with Auto memory settings and Native render scale. With **Low**, a **2 GB** texture
+target and **Performance** render scale together, it used about **8.5 GB of RAM and 4.2 GB of video
+memory**. You may see different numbers in other areas or on your PC.
+
+### Set up NVIDIA DLSS on Linux
+
+On Linux, DLSS needs a GeForce RTX card, a compatible NVIDIA driver and the separate
+[Lichii DLSS module](https://github.com/tasarren/lichii-dlss/releases).
+
+1. Open **Graphics** and choose **NVIDIA DLSS** under **Upscaler**.
+2. Click **Download**. Review NVIDIA's license and accept it to download the module and DLSS files.
+3. When the panel says **Ready**, start the game again.
+
+![Linux Graphics settings showing NVIDIA DLSS ready to use](docs/images/readme/dlss-linux.png)
+
+Already have the files? Choose **Install from file...** and select `lichii-dlss-module.so`. Keep
+NVIDIA's DLSS model file in the same folder.
 
 ## Reporting a problem
 
