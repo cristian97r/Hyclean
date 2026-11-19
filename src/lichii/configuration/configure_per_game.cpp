@@ -617,6 +617,8 @@ void ConfigurePerGame::LoadConfiguration() {
         ui->display_name->setText(QString::fromStdString(custom));
     }
     initial_title = ui->display_name->text().simplified().toStdString();
+    // setText leaves the cursor at the end, which scrolls long names to their tail.
+    ui->display_name->setCursorPosition(0);
     nup_icon_modified = false;
     pending_nup_icon.clear();
     remove_custom_icon = false;
@@ -640,6 +642,8 @@ void ConfigurePerGame::LoadConfiguration() {
     UpdateRemoveIconButton();
 
     ui->display_filename->setText(QString::fromStdString(file->GetName()));
+    ui->display_filename->setCursorPosition(0);
+    ui->display_filename->setToolTip(ui->display_filename->text());
 
     if (loader != nullptr) {
         ui->display_format->setText(
