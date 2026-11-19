@@ -171,6 +171,8 @@ void ConfigureSystem::Setup(const ConfigurationShared::Builder& builder) {
 
     push(Settings::values.linkage.by_category[Settings::Category::Core]);
     push(Settings::values.linkage.by_category[Settings::Category::System]);
+    // A RendererAdvanced setting (Renderer ini key) the System page shows.
+    settings.push_back(&Settings::values.ram_usage_mode);
 
     for (auto setting : settings) {
         if (setting->Id() == Settings::values.use_docked_mode.Id() &&
@@ -214,6 +216,7 @@ void ConfigureSystem::Setup(const ConfigurationShared::Builder& builder) {
             core_hold.emplace(setting->Id(), widget);
             break;
         case Settings::Category::System:
+        case Settings::Category::RendererAdvanced:
             system_hold.emplace(setting->Id(), widget);
             break;
         default:

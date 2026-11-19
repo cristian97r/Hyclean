@@ -40,6 +40,10 @@ void ConfigureGraphicsAdvanced::Setup(const ConfigurationShared::Builder& builde
 
     for (auto setting :
          Settings::values.linkage.by_category[Settings::Category::RendererAdvanced]) {
+        // Shown on the System page; the setting keeps its Renderer key.
+        if (setting->Id() == Settings::values.ram_usage_mode.Id()) {
+            continue;
+        }
         ConfigurationShared::Widget* widget = builder.BuildWidget(setting, apply_funcs);
 
         if (widget == nullptr) {
