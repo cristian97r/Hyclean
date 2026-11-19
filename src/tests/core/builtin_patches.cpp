@@ -9,6 +9,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
@@ -1096,6 +1097,40 @@ TEST_CASE("Built-in text speed is off until checked in Add-Ons", "[patch_manager
         REQUIRE(WordAt(patched, SiteOffset) == NopInstruction);
         REQUIRE(WordAt(patched, CaveOffset) == 0);
     }
+}
+
+TEST_CASE("Built-in local shadow size follows the Ocarina setting", "[patch_manager]") {
+    using Size = Settings::OcarinaShadowSize;
+    constexpr size_t WidthOffset = sizeof(Loader::NSOHeader) + 0xC30C24;
+    constexpr size_t HeightOffset = sizeof(Loader::NSOHeader) + 0xC30C2C;
+    constexpr u32 MovzW3 = 0x52860003;
+    constexpr u32 MovzW4 = 0x52860004;
+    PatchManagerTestContext context;
+    const auto manager = context.Manager();
+    auto nso = MakeDynamicMain();
+    std::memcpy(nso.data() + WidthOffset, &MovzW3, sizeof(MovzW3));
+    std::memcpy(nso.data() + HeightOffset, &MovzW4, sizeof(MovzW4));
+    for (const auto& patch : manager.GetPatches()) {
+        REQUIRE_FALSE(patch.name.starts_with("Local shadow size"));
+    }
+
+    const std::array<std::tuple<Size, u32, u32>, 3> sizes{{
+        {Size::Full, MovzW3, MovzW4},
+        {Size::Half, 0x52830003, 0x52830004},    // #0x1800, 6144
+        {Size::Quarter, 0x52818003, 0x52818004}, // #0xC00, 3072
+    }};
+    for (const auto& [size, width, height] : sizes) {
+        Settings::values.ocarina_local_shadow_size.SetValue(size);
+        const auto patched = manager.PatchNSO(nso, "main");
+        CHECK(WordAt(patched, WidthOffset) == width);
+        CHECK(WordAt(patched, HeightOffset) == height);
+    }
+
+    std::memcpy(nso.data() + HeightOffset, &NopInstruction, sizeof(NopInstruction));
+    const auto patched = manager.PatchNSO(nso, "main");
+    CHECK(WordAt(patched, WidthOffset) == MovzW3);
+    CHECK(WordAt(patched, HeightOffset) == NopInstruction);
+    Settings::values.ocarina_local_shadow_size.SetValue(Size::Full);
 }
 
 TEST_CASE("Unchecked add-on lists store off-by-default built-ins when checked", "[patch_manager]") {

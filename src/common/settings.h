@@ -65,6 +65,7 @@ SWITCHABLE(AnisotropyMode, true);
 SWITCHABLE(AntiAliasing, false);
 SWITCHABLE(OotAntiAliasing, false);
 SWITCHABLE(OcarinaRenderScale, false);
+SWITCHABLE(OcarinaShadowSize, false);
 SWITCHABLE(NvidiaDlssQuality, false);
 SWITCHABLE(NvidiaDlssPreset, false);
 SWITCHABLE(HdrMode, false);
@@ -463,6 +464,9 @@ struct Values {
     // 2560x1440), independent of NVIDIA DLSS.
     SwitchableSetting<OcarinaRenderScale> ocarina_render_scale{
         linkage, OcarinaRenderScale::Native, "ocarina_render_scale", Category::GameOcarina};
+    // The resolution of the game's local depth shadow atlas (12288x12288 at Full).
+    SwitchableSetting<OcarinaShadowSize> ocarina_local_shadow_size{
+        linkage, OcarinaShadowSize::Full, "ocarina_local_shadow_size", Category::GameOcarina};
 
     SwitchableSetting<std::string> post_shader_chain{linkage,
                                                      std::string(),
