@@ -259,6 +259,10 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "emulator's resolution scaling. Native keeps 2560x1440; Performance is 1920x1080. "
               "Independent of NVIDIA DLSS, which overrides this when it applies its own render "
               "scale.\nTakes effect when the game starts."));
+    INSERT(Settings, ocarina_local_shadow_size, tr("Local shadow size"),
+           tr("Size of the shadow map for nearby objects in towns. Half saves about 216 MB of "
+              "video memory, Quarter about 270 MB. Shadows look nearly the same. Restart the game "
+              "to apply."));
     INSERT(Settings, post_shader_chain, QString(), QString());
     INSERT(Settings, post_shader_preset, QString(), QString());
     INSERT(Settings, post_shader_enabled, tr("Enable post-processing effects"),
@@ -763,6 +767,12 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
                               PAIR(OcarinaRenderScale, Performance, tr("Performance (1920x1080)")),
                               PAIR(OcarinaRenderScale, UltraPerformance,
                                    tr("Ultra Performance (1280x720)")),
+                          }});
+    translations->insert({Settings::EnumMetadata<Settings::OcarinaShadowSize>::Index(),
+                          {
+                              PAIR(OcarinaShadowSize, Full, tr("Full (12288x12288)")),
+                              PAIR(OcarinaShadowSize, Half, tr("Half (6144x6144)")),
+                              PAIR(OcarinaShadowSize, Quarter, tr("Quarter (3072x3072)")),
                           }});
     translations->insert({Settings::EnumMetadata<Settings::HdrMode>::Index(),
                           {
