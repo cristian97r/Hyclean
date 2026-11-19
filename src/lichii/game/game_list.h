@@ -94,6 +94,9 @@ public:
 
     void ResetViewMode();
 
+    // The game's right-click menu (also used by LICHII_UI_SHOT).
+    void AddGamePopup(QMenu& context_menu, u64 program_id, const std::string& path);
+
 public slots:
     void SetNupConversionRunning(bool running);
     void SetNxToolRunning(bool running);
@@ -157,7 +160,6 @@ private:
     void ToggleFavorite(u64 program_id);
 
     void PopupContextMenu(const QPoint& menu_location);
-    void AddGamePopup(QMenu& context_menu, u64 program_id, const std::string& path);
     void AddCustomDirPopup(QMenu& context_menu, QModelIndex selected);
     void AddPermDirPopup(QMenu& context_menu, QModelIndex selected);
     void AddFavoritesPopup(QMenu& context_menu);

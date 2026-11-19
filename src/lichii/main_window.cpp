@@ -97,7 +97,9 @@
 #include <QFutureWatcher>
 #include <QGuiApplication>
 #include <QImage>
+#include <QLabel>
 #include <QListWidget>
+#include <QScrollArea>
 #include <QTabWidget>
 #include <QTimer>
 #include <QInputDialog>
@@ -4647,8 +4649,10 @@ void MainWindow::OnConfigurePerGame() {
 
 // Specs: "configure:<page>[:<tab>]" (the selector list item and one of its tabs by title), and
 // "properties:<program id hex>[:<tab>]" (the game's properties, found in the game list), and
-// "menu:upscaler" (the upscaler chip's right-click menu). The dialog is never accepted, so
-// nothing is saved.
+// "menu:upscaler" (the upscaler chip's right-click menu), "menu:<name>" (the menu bar's
+// menu_<Name>, e.g. menu:emulation) and "gamelist-menu:<program id hex>" (the game's right-click
+// menu). A fourth part on configure/properties, a setting key, scrolls its row into view. The
+// dialog is never accepted, so nothing is saved.
 void MainWindow::RunUiShot(const QString& request) {
     // Exits at once: nothing was started that needs shutting down, and the normal teardown is
     // not made for a session that never showed its window.
@@ -4664,15 +4668,54 @@ void MainWindow::RunUiShot(const QString& request) {
                   request.toStdString());
         return finish(2);
     }
-    if (halves[0] == QStringLiteral("menu:upscaler")) {
-        QMenu menu;
-        FillUpscalerMenu(menu);
+    const auto shoot_menu = [&](QMenu& menu) {
         menu.popup(QPoint{});
         QCoreApplication::processEvents();
         const bool saved = menu.grab().save(out);
-        LOG_INFO(Frontend, "LICHII_UI_SHOT: menu:upscaler -> {} ({})", out.toStdString(),
-                 saved ? "saved" : "failed");
-        return finish(saved ? 0 : 1);
+        LOG_INFO(Frontend, "LICHII_UI_SHOT: {} -> {} ({})", halves[0].toStdString(),
+                 out.toStdString(), saved ? "saved" : "failed");
+        finish(saved ? 0 : 1);
+    };
+    const auto game_path = [&](u64 program_id) {
+        const auto* const model = game_list->GetModel();
+        for (int row = 0; row < model->rowCount(); ++row) {
+            const QModelIndex folder = model->index(row, 0);
+            for (int child = -1; child < model->rowCount(folder); ++child) {
+                const QModelIndex item = child < 0 ? folder : model->index(child, 0, folder);
+                if (item.data(GameListItemPath::ProgramIdRole).toULongLong() == program_id) {
+                    return item.data(GameListItemPath::FullPathRole).toString();
+                }
+            }
+        }
+        return QString{};
+    };
+    if (halves[0] == QStringLiteral("menu:upscaler")) {
+        QMenu menu;
+        FillUpscalerMenu(menu);
+        return shoot_menu(menu);
+    }
+    if (spec[0] == QStringLiteral("menu")) {
+        const QString name = QStringLiteral("menu_") + spec[1];
+        for (auto* const menu : findChildren<QMenu*>()) {
+            if (menu->objectName().compare(name, Qt::CaseInsensitive) == 0) {
+                return shoot_menu(*menu);
+            }
+        }
+        LOG_ERROR(Frontend, "LICHII_UI_SHOT: no menu {}", name.toStdString());
+        return finish(2);
+    }
+    if (spec[0] == QStringLiteral("gamelist-menu")) {
+        bool ok = false;
+        const u64 program_id = spec[1].toULongLong(&ok, 16);
+        const QString path = ok ? game_path(program_id) : QString{};
+        if (path.isEmpty()) {
+            LOG_ERROR(Frontend, "LICHII_UI_SHOT: {} is not in the game list",
+                      spec[1].toStdString());
+            return finish(2);
+        }
+        QMenu menu;
+        game_list->AddGamePopup(menu, program_id, path.toStdString());
+        return shoot_menu(menu);
     }
     std::unique_ptr<QDialog> dialog;
     QTabWidget* tabs = nullptr;
@@ -4693,20 +4736,7 @@ void MainWindow::RunUiShot(const QString& request) {
     } else if (spec[0] == QStringLiteral("properties")) {
         bool ok = false;
         const u64 program_id = spec[1].toULongLong(&ok, 16);
-        QString path;
-        const auto* const model = game_list->GetModel();
-        for (int row = 0; ok && path.isEmpty() && row < model->rowCount(); ++row) {
-            const QModelIndex folder = model->index(row, 0);
-            const auto check = [&](const QModelIndex& item) {
-                if (item.data(GameListItemPath::ProgramIdRole).toULongLong() == program_id) {
-                    path = item.data(GameListItemPath::FullPathRole).toString();
-                }
-            };
-            check(folder);
-            for (int child = 0; path.isEmpty() && child < model->rowCount(folder); ++child) {
-                check(model->index(child, 0, folder));
-            }
-        }
+        const QString path = ok ? game_path(program_id) : QString{};
         if (path.isEmpty()) {
             LOG_ERROR(Frontend, "LICHII_UI_SHOT: {} is not in the game list",
                       spec[1].toStdString());
@@ -4737,6 +4767,36 @@ void MainWindow::RunUiShot(const QString& request) {
     }
     dialog->show();
     QCoreApplication::processEvents();
+    if (spec.size() > 3) {
+        // The setting's row is found by its label, as the translation table names it.
+        const auto setting = Settings::values.linkage.by_key.find(spec[3].toStdString());
+        const auto translations = ConfigurationShared::InitializeTranslations(this);
+        QWidget* row = nullptr;
+        if (setting != Settings::values.linkage.by_key.end() &&
+            translations->contains(setting->second->Id())) {
+            const QString label = translations->at(setting->second->Id()).first;
+            for (auto* const widget : dialog->findChildren<QWidget*>()) {
+                const auto* const text = qobject_cast<QLabel*>(widget);
+                const auto* const button = qobject_cast<QAbstractButton*>(widget);
+                if (widget->isVisible() && ((text && text->text() == label) ||
+                                            (button && button->text() == label))) {
+                    row = widget;
+                    break;
+                }
+            }
+        }
+        QScrollArea* area = nullptr;
+        for (QWidget* parent = row; parent && !area; parent = parent->parentWidget()) {
+            area = qobject_cast<QScrollArea*>(parent);
+        }
+        if (area == nullptr) {
+            LOG_ERROR(Frontend, "LICHII_UI_SHOT: no visible scrolled row for {}",
+                      spec[3].toStdString());
+            return finish(2);
+        }
+        area->ensureWidgetVisible(row);
+        QCoreApplication::processEvents();
+    }
     const bool saved = dialog->grab().save(out);
     LOG_INFO(Frontend, "LICHII_UI_SHOT: {} -> {} ({})", halves[0].toStdString(),
              out.toStdString(), saved ? "saved" : "failed");
