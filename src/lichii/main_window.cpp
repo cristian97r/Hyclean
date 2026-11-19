@@ -6176,7 +6176,7 @@ void MainWindow::FillUpscalerMenu(QMenu& menu) {
         QMenu* const quality = menu.addMenu(tr("DLSS quality"));
         for (const auto& [mode, text] : ConfigurationShared::nvidia_dlss_quality_texts_map) {
             const QString label = ConfigurationShared::TranslateMapText(translator, text);
-            QAction* const action = quality->addAction(label, [this, mode] {
+            QAction* const action = quality->addAction(label, [mode] {
                 Settings::values.nvidia_dlss_quality.SetValue(mode);
                 Settings::RefreshNvidiaDlssRuntimeSettings();
             });
@@ -6186,7 +6186,7 @@ void MainWindow::FillUpscalerMenu(QMenu& menu) {
         QMenu* const preset = menu.addMenu(tr("DLSS preset"));
         for (const auto& [value, text] : ConfigurationShared::nvidia_dlss_preset_texts_map) {
             QAction* const action = preset->addAction(
-                ConfigurationShared::TranslateMapText(translator, text), [this, value] {
+                ConfigurationShared::TranslateMapText(translator, text), [value] {
                     Settings::values.nvidia_dlss_preset.SetValue(value);
                     Settings::RefreshNvidiaDlssRuntimeSettings();
                 });
