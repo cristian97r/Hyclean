@@ -298,16 +298,19 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, frame_pacing_mode, tr("Frame Pacing Mode (Vulkan only)"),
            tr("Controls how the emulator manages frame pacing to reduce stuttering and make the "
               "frame rate smoother and more consistent."));
-    INSERT(Settings, vram_usage_mode, tr("VRAM Usage:"),
-           tr("How much video memory the emulator aims to stay under. Textures and buffers past "
-              "it are freed and loaded again when needed.\nAuto: 70% of what the GPU driver "
-              "allows, leaving room for other programs.\nUnlimited: up to what the driver "
-              "allows.\nA target below what a game's scenes need costs performance."));
-    INSERT(Settings, ram_usage_mode, tr("RAM Usage Mode:"),
-           tr("How many built shader pipelines stay in memory.\nHigh keeps all of them: no "
-              "pop-in.\nBalanced and Low drop ones not drawn for a few minutes: less RAM, but "
-              "places visited again may show brief pop-in while they rebuild.\nAuto picks by "
-              "installed RAM (32 GB or more: High, 16 GB: Balanced, less: Low)."));
+    INSERT(Settings, vram_usage_mode, tr("Texture Memory Target:"),
+           tr("How much video memory textures may use. Textures past it are freed and loaded "
+              "again when needed.\nRender targets, buffers and the GPU driver are not counted, "
+              "so total video memory stays above it: Ocarina of Time needs about 4.5 GB at 1X "
+              "with DLSS Ultra Performance whatever the target.\nAuto: 70% of what the GPU "
+              "driver allows, leaving room for other programs.\nUnlimited: up to what the "
+              "driver allows.\nA target below what a game's scenes need costs performance."));
+    INSERT(Settings, ram_usage_mode, tr("Shader Pipeline Memory:"),
+           tr("How many built shader pipelines stay in RAM. It does not limit the game's own "
+              "memory or other emulator memory.\nHigh keeps all of them: no pop-in.\nBalanced "
+              "and Low drop ones not drawn for a few minutes: less RAM (about 1 GB in Ocarina "
+              "of Time), but places visited again may show brief pop-in while they rebuild.\n"
+              "Auto picks by installed RAM (32 GB or more: High, 16 GB: Balanced, less: Low)."));
     INSERT(Settings, skip_cpu_inner_invalidation, tr("Skip CPU Inner Invalidation"),
            tr("Skips certain cache invalidations during memory updates, reducing CPU usage and "
               "improving latency. This may cause soft-crashes."));
