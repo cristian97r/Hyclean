@@ -137,21 +137,19 @@ On Linux, DLSS needs a GeForce RTX card, a compatible NVIDIA driver and the sepa
 [Lichii DLSS module](https://github.com/tasarren/lichii-dlss/releases).
 
 1. Open **Graphics** and choose **NVIDIA DLSS** under **Upscaler**.
-2. If DLSS is not set up, click **Download**. Review NVIDIA's license and accept it to download
-   the module and DLSS files.
+2. If DLSS is not set up, choose one of these options:
 
-   ![Linux DLSS panel before setup, with the Download button marked](docs/images/readme/dlss-download.png)
+   - **Download (1):** Review and accept NVIDIA's license to download the module and DLSS files.
+   - **Install from file... (2):** If you already have the files, select `lichii-dlss-module.so`.
+     Keep NVIDIA's DLSS model file in the same folder.
 
-   If you already have the files, choose **Install from file...** instead and select
-   `lichii-dlss-module.so`. Keep NVIDIA's DLSS model file in the same folder.
+   ![Linux DLSS panel before setup: 1 Download, 2 Install from file](docs/images/readme/dlss-download.png)
 
-   ![Linux DLSS panel before setup, with the Install from file button marked](docs/images/readme/dlss-install-file.png)
+3. When the panel says **Ready** (1), click **OK** and start the game.
 
-3. When the panel says **Ready**, click **OK** and start the game.
+   ![Linux DLSS panel after setup: 1 Ready, 2 Reinstall](docs/images/readme/dlss-linux.png)
 
-   ![Linux DLSS panel after setup, with Ready marked and the Reinstall link visible](docs/images/readme/dlss-linux.png)
-
-To install again later, click **Reinstall** next to **Ready** to show both install buttons.
+To install again later, click **Reinstall** (2) next to **Ready** to show both buttons.
 
 ## Reporting a problem
 

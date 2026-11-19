@@ -1,0 +1,49 @@
+# Maybe this will make our Windows build work under Linux and we can also test the emulator through the iGPU?
+# Do not commit this, this is an owner file for test later
+services:
+  windows:
+    image: dockurr/windows
+    container_name: windows
+    restart: unless-stopped
+    stop_grace_period: 2m
+    environment:
+      VERSION: "core11"
+      DISK_SIZE: "50G"
+      RAM_SIZE: "16G"
+      CPU_CORES: "8"
+      AUDIO: "Y"
+      USERNAME: "lichii"
+      PASSWORD: "lichii"
+      REGION: "en-US"
+      KEYBOARD: "en-US"
+      DHCP: "Y"
+      AMD_VISIBLE_DEVICES: all
+    runtime: amd # So we can use our iGPU for AMD testing?
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+      - /dev/vhost-net
+    device_cgroup_rules:
+      - 'c *:* rwm'
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - target: 8006
+        published: 8006
+      - target: 3389
+        published: 3389
+        protocol: tcp
+      - target: 3389
+        published: 3389
+        protocol: udp
+    volumes:
+      - target: /storage
+        source: windows_data
+        type: volume
+      - target: /shared # Lives in Z:
+        source: ../
+        type: bind
+        bind:
+          create_host_path: false
+volumes:
+  windows_data: {}
