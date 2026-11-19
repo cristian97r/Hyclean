@@ -37,6 +37,11 @@ private:
     QLabel* status_label;
     QPushButton* download_button;
     QPushButton* folder_button;
+#ifndef _WIN32
+    QLabel* reinstall_link;
+    /// Reinstall was pressed while Ready: Download and Install from file stay shown.
+    bool reinstall_shown{};
+#endif
     bool frame_gen_wanted{};
 };
 

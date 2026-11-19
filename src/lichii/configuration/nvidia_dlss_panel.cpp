@@ -455,6 +455,13 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
     status_label->setWordWrap(true);
     status_row->addWidget(icon_label);
     status_row->addWidget(status_label, 1);
+#ifndef _WIN32
+    reinstall_link =
+        new QLabel(QStringLiteral("<a href=\"#\">%1</a>").arg(Tr("Reinstall")), this);
+    reinstall_link->setAlignment(Qt::AlignTop);
+    reinstall_link->setToolTip(Tr("Show Download and Install from file again."));
+    status_row->addWidget(reinstall_link);
+#endif
 
     QHBoxLayout* button_row = new QHBoxLayout;
     button_row->setContentsMargins(24, 0, 0, 0);
@@ -506,6 +513,10 @@ NvidiaDlssPanel::NvidiaDlssPanel(QWidget* parent) : QWidget(parent) {
     });
 #else
     connect(folder_button, &QPushButton::clicked, this, [this] { InstallFromFile(); });
+    connect(reinstall_link, &QLabel::linkActivated, this, [this] {
+        reinstall_shown = true;
+        Refresh();
+    });
     connect(open_folder, &QLabel::linkActivated, this, [] {
         const std::filesystem::path folder = Folder();
         std::error_code ec;
@@ -632,7 +643,10 @@ void NvidiaDlssPanel::Refresh() {
     status_label->setToolTip(
         Tr("Folder: %1").arg(QString::fromStdString(Vulkan::Ngx::ModuleDir())));
     download_button->setText(Tr("Download"));
-    download_button->setVisible(!ready);
+    const bool show_install = !ready || reinstall_shown;
+    download_button->setVisible(show_install);
+    folder_button->setVisible(show_install);
+    reinstall_link->setVisible(!show_install);
 #endif
 }
 
