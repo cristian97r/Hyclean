@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <optional>
 #include <utility>
 
@@ -418,6 +419,16 @@ void ShaderJobScheduler::StartStage(ShaderJobState& job, bool driver, Clock::tim
     stats.peak_in_flight_bytes = std::max(stats.peak_in_flight_bytes, stats.in_flight_bytes);
     job.status = driver ? ShaderJobStatus::Driver : ShaderJobStatus::Cpu;
     job.stage_begin = now;
+    // EDEN_NX2_MEM_TRACE=1: at most every 10 s while stages start, the bytes the budget counts.
+    static const bool mem_trace = std::getenv("EDEN_NX2_MEM_TRACE") != nullptr;
+    if (mem_trace && now - last_mem_trace >= std::chrono::seconds{10}) {
+        last_mem_trace = now;
+        LOG_INFO(Render_Vulkan,
+                 "Memory trace: shader jobs {} MiB in flight, peak {} MiB, budget {} MiB, {} "
+                 "budget stalls ({} ms)",
+                 stats.in_flight_bytes >> 20, stats.peak_in_flight_bytes >> 20, budget >> 20,
+                 stats.budget_stalls, stats.budget_stall_ns / 1'000'000);
+    }
 }
 
 void ShaderJobScheduler::RunCpu(const JobPtr& job, bool run_driver_here) {
