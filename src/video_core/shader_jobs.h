@@ -213,6 +213,7 @@ private:
     bool cpu_aged_last{};
     bool driver_aged_last{};
     ShaderJobStats stats;
+    std::chrono::steady_clock::time_point last_mem_trace{};
     std::vector<std::thread> threads;
 };
 
