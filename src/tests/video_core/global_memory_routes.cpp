@@ -520,3 +520,30 @@ TEST_CASE("A table pointer carried from the previous iteration keeps its unpredi
     CHECK(descriptors[route.front()].cbuf_offset == 0x180);
     CHECK(descriptors[route.front()].indirect_offset == 0x20);
 }
+
+TEST_CASE("On NVIDIA an access with one candidate keeps its route, except in the #619 programs",
+          "[shader][global_memory_routes]") {
+    Profile profile{};
+    profile.supported_spirv = 0x00010600;
+    profile.support_int64 = true;
+    profile.support_descriptor_aliasing = true;
+    profile.unified_descriptor_binding = true;
+    profile.min_ssbo_alignment = 16;
+    profile.select_global_memory_buffer = true;
+    const auto emit = [&](u64 hash) {
+        Fixture fixture;
+        auto& route{fixture.program.global_memory_routes.front()};
+        route.resize(1);
+        Backend::Bindings binding;
+        const auto code{Vulkan::EmitPipelineShader(profile, {}, fixture.program, binding, hash)};
+        Dump(code, "single-" + std::to_string(hash));
+        return SelectionsPerFunction(code);
+    };
+    // The search, the 32, 64 and 128-bit load and store through every buffer, the routed 32-bit
+    // load and store (one branch each), and the entry point
+    const auto single{emit(0x1234)};
+    CHECK(single.size() == 10);
+    CHECK(std::ranges::count(single, size_t{1}) >= 2);
+    CHECK(emit(0xf98012dc9a4465ffULL).size() == 8);
+    CHECK(emit(0xe78efceda31f97a8ULL).size() == 8);
+}

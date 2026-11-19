@@ -11,14 +11,18 @@
 
 namespace Vulkan {
 
+/// The Ocarina programs of #619: the NVIDIA Linux driver hangs (Xid 109) on their routed accesses.
+inline bool HangsOnRoutes(u64 shader_hash) {
+    return shader_hash == 0xf98012dc9a4465ffULL || shader_hash == 0xe78efceda31f97a8ULL;
+}
+
 /// Whether a shader routes global memory with OpSelect over every bound buffer on NVIDIA (#1848).
 /// Compute keeps it: the two Ocarina programs of #619 hang the Linux driver (Xid 109) with
 /// candidate-route chains, and NVIDIA compiles other compute programs ~1.6x faster with it, which
 /// shortens first-use freezes. Graphics shaders keep the candidate routes of #1807: the select form
 /// costs ~10 fps at the Market fountain.
 inline bool SelectsGlobalMemoryBuffer(const Shader::IR::Program& program, u64 shader_hash) {
-    return program.stage == Shader::Stage::Compute || shader_hash == 0xf98012dc9a4465ffULL ||
-           shader_hash == 0xe78efceda31f97a8ULL;
+    return program.stage == Shader::Stage::Compute || HangsOnRoutes(shader_hash);
 }
 
 inline std::vector<u32> EmitPipelineShader(const Shader::Profile& profile,
@@ -28,9 +32,10 @@ inline std::vector<u32> EmitPipelineShader(const Shader::Profile& profile,
                                            std::span<const u32> reference = {}) {
     Shader::Profile candidate_routes;
     const Shader::Profile* used{&profile};
-    if (profile.select_global_memory_buffer && !SelectsGlobalMemoryBuffer(program, shader_hash)) {
+    if (profile.select_global_memory_buffer) {
         candidate_routes = profile;
-        candidate_routes.select_global_memory_buffer = false;
+        candidate_routes.select_global_memory_buffer = SelectsGlobalMemoryBuffer(program, shader_hash);
+        candidate_routes.route_single_candidates = !HangsOnRoutes(shader_hash);
         used = &candidate_routes;
     }
     std::vector<u32> code{

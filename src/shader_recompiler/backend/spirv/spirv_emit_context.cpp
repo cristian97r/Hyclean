@@ -1099,6 +1099,13 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
     if (!profile.select_global_memory_buffer) {
         global_memory_functions.resize(program.global_memory_routes.size() + 1);
         global_memory_route = program.global_memory_route;
+    } else if (profile.route_single_candidates) {
+        global_memory_functions.resize(program.global_memory_routes.size() + 1);
+        for (const auto& [inst, route] : program.global_memory_route) {
+            if (program.global_memory_routes[route].size() == 1) {
+                global_memory_route.emplace(inst, route);
+            }
+        }
     } else {
         global_memory_functions.resize(1);
     }
@@ -1219,11 +1226,13 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
     // that search slowly at each inlined access (#1848: ~1.7 s per OoT compute pipeline), so the
     // search is one function that is not inlined, and the accesses stay inlined.
     Id search_function{};
+    // Whether the functions being defined select among every bound buffer
+    bool selects{};
     const auto define_body{[&](DefPtr ssbo_member, Id addr, const StorageTypeDefinition& type_def,
                                u32 shift, Id result_type, Id fallback, Routing routing,
                                auto&& callback) -> Id {
         const Id header_label{AddLabel()};
-        const bool select{routing != Routing::PerBuffer && profile.select_global_memory_buffer};
+        const bool select{routing != Routing::PerBuffer && selects};
         Route found_route;
         if (select && ValidId(search_function)) {
             for (const u32 index : buffers) {
@@ -1241,7 +1250,7 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
         }
         const auto& [candidates, route, route_base] = found_route;
         const bool has_value{result_type.value != void_id.value};
-        if (routing != Routing::PerBuffer && profile.select_global_memory_buffer) {
+        if (select) {
             if (candidates.empty()) {
                 return fallback;
             }
@@ -1523,12 +1532,17 @@ void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
                              : std::span<const u32>{program.global_memory_routes[route - 1]};
         functions = &global_memory_functions[route];
         const Uses& use{uses[route]};
+        // With select_global_memory_buffer only single-candidate routes are used past route 0
+        selects = profile.select_global_memory_buffer && route == 0;
+        if (profile.select_global_memory_buffer && route != 0 && buffers.size() != 1) {
+            continue;
+        }
         // Every access through all buffers gets its functions; the 64 and 128-bit ones read and
         // write words through the 32-bit ones without descriptor aliasing.
         const bool all{route == 0};
         const bool words{!profile.support_descriptor_aliasing &&
                          (use.accesses[1] || use.accesses[2])};
-        if (profile.select_global_memory_buffer) {
+        if (selects) {
             search_function = OpFunction(U32[3], spv::FunctionControlMask::DontInline,
                                          TypeFunction(U32[3], U64));
             const Id addr{OpFunctionParameter(U64)};
